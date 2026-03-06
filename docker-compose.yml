@@ -11,7 +11,7 @@ services:
       - ./backend:/app
       - sqlite_data:/app/data
     environment:
-      - DATABASE_URL=sqlite:////./data/pathfinder.db
+      - DATABASE_URL=sqlite:////app/data/pathfinder.db
       - ENVIRONMENT=development
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
