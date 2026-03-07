@@ -3,7 +3,7 @@ from sqlalchemy.orm import relationship
 from database import Base
 
 # Association table — prerequisite edges between nodes
-prerequisites = Table(
+prerequisite_edges_table = Table(
     "prerequisites",
     Base.metadata,
     Column("node_id", String, ForeignKey("nodes.id"), primary_key=True),
@@ -11,7 +11,7 @@ prerequisites = Table(
 )
 
 # Association table — overlap edges (same skill in different domains)
-overlaps = Table(
+overlap_edges_table = Table(
     "overlaps",
     Base.metadata,
     Column("node_id", String, ForeignKey("nodes.id"), primary_key=True),
@@ -35,16 +35,16 @@ class Node(Base):
     # Prerequisite edges (this node requires these nodes first)
     prerequisites = relationship(
         "Node",
-        secondary=prerequisites,
-        primaryjoin=id == prerequisites.c.node_id,
-        secondaryjoin=id == prerequisites.c.prerequisite_id,
+        secondary=prerequisite_edges_table,
+        primaryjoin=id == prerequisite_edges_table.c.node_id,
+        secondaryjoin=id == prerequisite_edges_table.c.prerequisite_id,
         backref="unlocks"
     )
 
     # Overlap edges (this node shares skills with these nodes)
     overlaps = relationship(
         "Node",
-        secondary=overlaps,
-        primaryjoin=id == overlaps.c.node_id,
-        secondaryjoin=id == overlaps.c.overlap_id,
+        secondary=overlap_edges_table,
+        primaryjoin=id == overlap_edges_table.c.node_id,
+        secondaryjoin=id == overlap_edges_table.c.overlap_id,
     )
