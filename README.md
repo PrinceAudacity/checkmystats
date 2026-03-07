@@ -29,4 +29,4 @@ http://localhost:8000/docs
 
 ## Team
 
-Built by [YOUR SCHOOL NAME] for the [COMPETITION NAME] hackathon.
+Built by HOWARD UNIVERSITY'S TEAM for the BANK OF AMERICA codeathon.
