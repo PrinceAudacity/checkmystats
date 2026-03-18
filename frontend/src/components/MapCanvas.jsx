@@ -1,168 +1,349 @@
-import React, { useEffect, useRef, useCallback } from 'react'
-import * as d3 from 'd3'
+import React, { useRef, useEffect } from 'react'
+import { SKILL_NODES, EDGES, CAT_COLOR, CAT_NAMES, TIER_LABEL, EDU_LABELS } from '../data/skillData'
+import { NODE_POSITIONS, RINGS, CANVAS_CENTER, DS } from '../utils/layout'
+import { nById, prereqOf } from '../utils/graph'
 
-// Layer colors matching spec document
-const LAYER_COLORS = {
-  1: '#3A86FF',   // Foundation — blue
-  2: '#06D6A0',   // Domain — green
-  3: '#FFB703',   // Professional — yellow
-  4: '#E94560',   // Outcome — red/accent
-}
+const { CX, CY } = CANVAS_CENTER
+let _stars = null
 
-const NODE_RADIUS = {
-  1: 8,
-  2: 10,
-  3: 13,
-  4: 16,
-}
+export default function MapCanvas({
+  wrapRef, canvasRef, vTx, vTy, vScale, zlblRef,
+  selNode, activePath, activeCatFilter,
+  onNodeClick, onResetView
+}) {
+  // Use refs so the RAF loop always reads current values without re-registering
+  const selNodeRef = useRef(selNode)
+  const activePathRef = useRef(activePath)
+  const activeCatRef = useRef(activeCatFilter)
+  useEffect(() => { selNodeRef.current = selNode }, [selNode])
+  useEffect(() => { activePathRef.current = activePath }, [activePath])
+  useEffect(() => { activeCatRef.current = activeCatFilter }, [activeCatFilter])
 
-export default function MapCanvas({ graphData, selectedNode, pathData, onNodeClick }) {
-  const svgRef = useRef(null)
-  const simulationRef = useRef(null)
+  const hovNodeRef = useRef(null)
+  const isPanRef = useRef(false)
+  const psxRef = useRef(0)
+  const psyRef = useRef(0)
+  const tipRef = useRef(null)
 
-  const draw = useCallback(() => {
-    if (!graphData.nodes.length) return
+  function isLight() { return document.body.classList.contains('light') }
+  function w2s(x, y) { return { sx: x * vScale.current + vTx.current, sy: y * vScale.current + vTy.current } }
 
-    const svg = d3.select(svgRef.current)
-    svg.selectAll('*').remove()
+  function resize() {
+    const wrap = wrapRef.current, cvs = canvasRef.current
+    if (!wrap || !cvs) return
+    const dpr = devicePixelRatio || 1
+    cvs.width = wrap.offsetWidth * dpr
+    cvs.height = wrap.offsetHeight * dpr
+    cvs.style.width = wrap.offsetWidth + 'px'
+    cvs.style.height = wrap.offsetHeight + 'px'
+    cvs.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0)
+  }
 
-    const width = window.innerWidth
-    const height = window.innerHeight
+  function draw() {
+    const cvs = canvasRef.current, wrap = wrapRef.current
+    if (!cvs || !wrap) return
+    const ctx = cvs.getContext('2d')
+    const W = wrap.offsetWidth, H = wrap.offsetHeight
+    const li = isLight()
+    const scale = vScale.current
+    const selN = selNodeRef.current
+    const aPath = activePathRef.current
+    const aCat = activeCatRef.current
 
-    svg.attr('width', width).attr('height', height)
+    ctx.clearRect(0, 0, W, H)
+    ctx.fillStyle = li ? '#EEF0F8' : '#0e0e1a'
+    ctx.fillRect(0, 0, W, H)
 
-    // Zoom behavior
-    const zoomGroup = svg.append('g').attr('class', 'zoom-group')
-    svg.call(
-      d3.zoom()
-        .scaleExtent([0.1, 3])
-        .on('zoom', (event) => zoomGroup.attr('transform', event.transform))
-    )
+    const { sx: ccx, sy: ccy } = w2s(CX, CY)
 
-    // Start centered
-    svg.call(
-      d3.zoom().transform,
-      d3.zoomIdentity.translate(width / 2, height / 2)
-    )
-
-    // Build node and edge maps
-    const nodeById = Object.fromEntries(graphData.nodes.map(n => [n.id, n]))
-    const pathSet = new Set(pathData?.path || [])
-
-    // Use seed x/y if available, otherwise force layout
-    const nodes = graphData.nodes.map(n => ({
-      ...n,
-      x: n.x != null ? n.x : Math.random() * width,
-      y: n.y != null ? n.y : Math.random() * height,
-      fx: n.x != null ? n.x : null,
-      fy: n.y != null ? n.y : null,
-    }))
-
-    const edges = graphData.edges
-      .filter(e => e.type === 'prerequisite')
-      .map(e => ({
-        source: e.source,
-        target: e.target,
-      }))
-
-    // Force simulation — used when x/y not seeded
-    simulationRef.current = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(edges).id(d => d.id).distance(80))
-      .force('charge', d3.forceManyBody().strength(-200))
-      .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('y', d3.forceY(d => (5 - d.layer) * 160).strength(0.4))
-
-    // Draw edges
-    const link = zoomGroup.append('g')
-      .selectAll('line')
-      .data(edges)
-      .join('line')
-      .attr('class', d => {
-        if (pathSet.size === 0) return 'link'
-        const sourceOnPath = pathSet.has(typeof d.source === 'object' ? d.source.id : d.source)
-        const targetOnPath = pathSet.has(typeof d.target === 'object' ? d.target.id : d.target)
-        return sourceOnPath && targetOnPath ? 'link highlighted' : 'link dimmed'
+    // Sector background glow
+    if (!li) {
+      Object.entries(DS).forEach(([cat, sec]) => {
+        if (!sec.s || sec.s > Math.PI) return
+        const r1 = 160 * scale * .5, r2 = 1590 * scale * 1.08
+        ctx.save()
+        ctx.globalAlpha = .02
+        ctx.beginPath()
+        ctx.moveTo(ccx + Math.cos(sec.a - sec.s / 2) * r1, ccy + Math.sin(sec.a - sec.s / 2) * r1)
+        ctx.arc(ccx, ccy, r2, sec.a - sec.s / 2, sec.a + sec.s / 2)
+        ctx.arc(ccx, ccy, r1, sec.a + sec.s / 2, sec.a - sec.s / 2, true)
+        ctx.closePath()
+        ctx.fillStyle = CAT_COLOR[cat] || '#888'
+        ctx.fill()
+        ctx.restore()
       })
-      .attr('stroke', '#ffffff')
-      .attr('stroke-width', 1)
-      .attr('marker-end', 'url(#arrow)')
-
-    // Arrow marker
-    svg.append('defs').append('marker')
-      .attr('id', 'arrow')
-      .attr('viewBox', '0 -5 10 10')
-      .attr('refX', 20)
-      .attr('markerWidth', 6)
-      .attr('markerHeight', 6)
-      .attr('orient', 'auto')
-      .append('path')
-      .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', '#ffffff')
-      .attr('opacity', 0.4)
-
-    // Draw nodes
-    const node = zoomGroup.append('g')
-      .selectAll('g')
-      .data(nodes)
-      .join('g')
-      .attr('class', d => {
-        if (pathSet.size === 0) return 'node'
-        if (pathSet.has(d.id)) return 'node on-path'
-        return 'node dimmed'
+      if (!_stars) {
+        _stars = []
+        for (let i = 0; i < 300; i++)
+          _stars.push({ x: (Math.random() - .5) * 6000 + CX, y: (Math.random() - .5) * 6000 + CY, r: Math.random() * .7 + .2, a: Math.random() * .12 + .03 })
+      }
+      _stars.forEach(s => {
+        const { sx, sy } = w2s(s.x, s.y)
+        if (sx < -2 || sx > W + 2 || sy < -2 || sy > H + 2) return
+        ctx.beginPath(); ctx.arc(sx, sy, s.r, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(200,210,235,${s.a})`; ctx.fill()
       })
-      .call(
-        d3.drag()
-          .on('start', (event, d) => {
-            if (!event.active) simulationRef.current.alphaTarget(0.3).restart()
-            d.fx = d.x
-            d.fy = d.y
-          })
-          .on('drag', (event, d) => {
-            d.fx = event.x
-            d.fy = event.y
-          })
-          .on('end', (event, d) => {
-            if (!event.active) simulationRef.current.alphaTarget(0)
-          })
-      )
-      .on('click', (event, d) => {
-        event.stopPropagation()
-        onNodeClick(d)
-      })
+    }
 
-    node.append('circle')
-      .attr('r', d => NODE_RADIUS[d.layer] || 8)
-      .attr('fill', d => LAYER_COLORS[d.layer] || '#888')
-      .attr('stroke', d => selectedNode?.id === d.id ? '#ffffff' : 'transparent')
-      .attr('stroke-width', 2)
-
-    node.append('text')
-      .attr('dy', d => -(NODE_RADIUS[d.layer] || 8) - 4)
-      .attr('text-anchor', 'middle')
-      .text(d => d.display_name)
-      .style('font-size', d => d.layer === 4 ? '12px' : '10px')
-      .style('font-weight', d => d.layer === 4 ? 'bold' : 'normal')
-
-    // Tick
-    simulationRef.current.on('tick', () => {
-      link
-        .attr('x1', d => d.source.x)
-        .attr('y1', d => d.source.y)
-        .attr('x2', d => d.target.x)
-        .attr('y2', d => d.target.y)
-
-      node.attr('transform', d => `translate(${d.x},${d.y})`)
+    // Orbital rings
+    RINGS.forEach(ring => {
+      const sr = ring.r * scale
+      ctx.save()
+      ctx.beginPath(); ctx.arc(ccx, ccy, sr, 0, Math.PI * 2)
+      ctx.strokeStyle = li ? 'rgba(140,120,60,.25)' : 'rgba(200,180,120,.18)'
+      ctx.lineWidth = 1.5; ctx.stroke()
+      ctx.globalAlpha = li ? .02 : .015
+      ctx.beginPath(); ctx.arc(ccx, ccy, sr, 0, Math.PI * 2)
+      ctx.fillStyle = li ? 'rgba(140,120,60,1)' : 'rgba(200,180,120,1)'; ctx.fill()
+      ctx.restore()
+      const lx = ccx + Math.cos(ring.la) * sr, ly = ccy + Math.sin(ring.la) * sr
+      const fs = Math.max(11, 16 * scale)
+      ctx.save(); ctx.font = `600 ${fs}px -apple-system,sans-serif`; ctx.textAlign = 'left'
+      ctx.fillStyle = li ? 'rgba(120,100,40,.55)' : 'rgba(200,180,120,.4)'
+      if (!li) { ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 4 }
+      ctx.fillText(ring.l, lx + 8, ly - 6); ctx.restore()
     })
 
-  }, [graphData, selectedNode, pathData, onNodeClick])
+    // Edges
+    EDGES.forEach(([aId, bId]) => {
+      const pa = NODE_POSITIONS[aId], pb = NODE_POSITIONS[bId]
+      if (!pa || !pb) return
+      const { sx: ax, sy: ay } = w2s(pa.x, pa.y)
+      const { sx: bx, sy: by } = w2s(pb.x, pb.y)
+      const na = nById[aId]
+      const onP = aPath?.edgeSet.has(aId + '→' + bId)
+      const dim = aPath && !onP
+      const catDim = !aPath && aCat && na?.cat !== aCat && nById[bId]?.cat !== aCat
+      ctx.save()
+      if (onP) {
+        ctx.globalAlpha = .95; ctx.strokeStyle = CAT_COLOR[na?.cat] || '#aaa'
+        ctx.lineWidth = 2.8 * Math.min(scale, 1)
+        ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 10
+      } else if (dim || catDim) {
+        ctx.globalAlpha = .03; ctx.strokeStyle = li ? 'rgba(80,80,120,1)' : 'rgba(120,130,160,1)'; ctx.lineWidth = .5
+      } else {
+        ctx.globalAlpha = li ? .14 : .16; ctx.strokeStyle = CAT_COLOR[na?.cat] || '#888'; ctx.lineWidth = .7
+      }
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke()
+      ctx.restore()
+    })
 
-  useEffect(() => { draw() }, [draw])
+    // Nodes
+    SKILL_NODES.forEach(n => {
+      const p = NODE_POSITIONS[n.id]
+      if (!p) return
+      const { sx, sy } = w2s(p.x, p.y)
+      if (sx < -80 || sx > W + 80 || sy < -80 || sy > H + 80) return
+      const isH = hovNodeRef.current?.id === n.id
+      const isS = selN?.id === n.id
+      const onP = aPath?.nodeSet.has(n.id)
+      const dim = (aPath && !onP && !isS) || (aCat && n.cat !== aCat && !onP)
+      const col = CAT_COLOR[n.cat] || '#888'
+      let r = n.tier === 0 ? 5 : n.tier === 1 ? 8 : n.tier === 2 ? 13 : 10
+      r = r * (isH || isS ? 1.35 : 1) * Math.min(scale * 1.1, 1.4)
+      ctx.save(); ctx.globalAlpha = dim ? .08 : 1
 
+      if (n.tier === 2) {
+        ctx.shadowColor = col; ctx.shadowBlur = isS || onP ? 28 : 12
+        ctx.beginPath(); ctx.arc(sx, sy, r * 1.5, 0, Math.PI * 2)
+        ctx.strokeStyle = col + '55'; ctx.lineWidth = 1; ctx.stroke()
+        ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill()
+        ctx.strokeStyle = li ? 'rgba(255,255,255,.6)' : 'rgba(255,255,255,.4)'; ctx.lineWidth = 1.2; ctx.stroke()
+        ctx.shadowBlur = 0
+        ctx.beginPath(); ctx.arc(sx, sy, r * .3, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fill()
+      } else if (n.tier === 3) {
+        ctx.shadowColor = col; ctx.shadowBlur = isS || onP ? 20 : 6
+        ctx.beginPath(); ctx.moveTo(sx, sy - r * 1.4); ctx.lineTo(sx + r * .9, sy)
+        ctx.lineTo(sx, sy + r * 1.4); ctx.lineTo(sx - r * .9, sy); ctx.closePath()
+        ctx.fillStyle = col; ctx.fill()
+        if (isS || onP) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke() }
+        ctx.shadowBlur = 0
+        ctx.beginPath(); ctx.arc(sx, sy, r * .25, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fill()
+      } else if (n.tier === 1) {
+        ctx.shadowColor = col; ctx.shadowBlur = onP ? 14 : isH ? 8 : 0
+        ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2)
+        if (onP) {
+          ctx.fillStyle = col; ctx.fill()
+          ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.2; ctx.stroke()
+        } else {
+          ctx.fillStyle = li ? 'rgba(200,210,240,.85)' : 'rgba(20,22,35,.95)'; ctx.fill()
+          ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.stroke()
+        }
+      } else {
+        ctx.shadowColor = col; ctx.shadowBlur = onP ? 10 : isH ? 6 : 0
+        ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2)
+        if (onP) { ctx.fillStyle = col; ctx.fill() }
+        else {
+          ctx.fillStyle = li ? 'rgba(190,200,230,.6)' : 'rgba(30,33,55,.9)'; ctx.fill()
+          ctx.strokeStyle = col + '80'; ctx.lineWidth = .8; ctx.stroke()
+        }
+      }
+      ctx.shadowBlur = 0
+
+      const showLbl = n.tier >= 2 || scale > .35 || isH || isS || onP
+      if (showLbl) {
+        const fs = n.tier >= 2 ? Math.max(10, 12 * scale) : Math.max(9, 10 * scale)
+        ctx.globalAlpha = dim ? .06 : n.tier >= 2 ? .95 : .80
+        ctx.font = `${n.tier >= 2 ? '600' : '400'} ${fs}px -apple-system,sans-serif`
+        ctx.textAlign = 'center'
+        if (!li) { ctx.shadowColor = 'rgba(0,0,0,.9)'; ctx.shadowBlur = 4 }
+        ctx.fillStyle = li ? 'rgba(10,10,30,.9)' : 'rgba(225,228,245,.95)'
+        ctx.fillText(n.name, sx, sy + r * 1.5 + fs + 1)
+        if (n.level && (scale > .3 || isH || isS || onP)) {
+          ctx.font = `500 ${Math.max(8, 9 * scale)}px -apple-system,sans-serif`
+          ctx.fillStyle = li ? 'rgba(100,90,50,.5)' : 'rgba(200,180,120,.45)'
+          ctx.fillText(n.level.toUpperCase(), sx, sy + r * 1.5 + fs + 1 + fs * .85)
+        }
+        ctx.shadowBlur = 0
+      }
+      ctx.restore()
+    })
+
+    // Category overlay labels at very low zoom
+    if (scale < .28) {
+      Object.entries(DS).forEach(([cat, sec]) => {
+        if (!sec.s || sec.s > Math.PI || cat === 'CRED') return
+        const { sx, sy } = w2s(CX + Math.cos(sec.a) * 760, CY + Math.sin(sec.a) * 760)
+        if (sx < 0 || sx > W || sy < 0 || sy > H) return
+        ctx.save()
+        ctx.globalAlpha = Math.max(0, (.28 - scale) / .18 * .6)
+        ctx.font = `600 ${Math.max(11, 13 * scale)}px -apple-system,sans-serif`
+        ctx.textAlign = 'center'
+        ctx.fillStyle = CAT_COLOR[cat] || '#888'
+        ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 6
+        ctx.fillText(CAT_NAMES[cat] || cat, sx, sy)
+        ctx.restore()
+      })
+    }
+  }
+
+  // Single RAF loop — runs once, always reads current refs
   useEffect(() => {
-    const handleResize = () => draw()
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [draw])
+    let raf
+    function tick() { draw(); raf = requestAnimationFrame(tick) }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, []) // eslint-disable-line
 
-  return <svg ref={svgRef} className="absolute inset-0" />
+  // Resize
+  useEffect(() => {
+    resize()
+    window.addEventListener('resize', resize)
+    return () => window.removeEventListener('resize', resize)
+  }, [])
+
+  // Call reset view on first mount
+  useEffect(() => { onResetView() }, [])
+
+  // Hover helper
+  function hoverCheck(e) {
+    const wrap = wrapRef.current
+    if (!wrap) return
+    const r = wrap.getBoundingClientRect()
+    const mx = e.clientX - r.left, my = e.clientY - r.top
+    let found = null, md = Infinity
+    SKILL_NODES.forEach(n => {
+      const p = NODE_POSITIONS[n.id]
+      if (!p) return
+      const { sx, sy } = w2s(p.x, p.y)
+      const hit = (n.tier === 0 ? 6 : n.tier === 1 ? 10 : n.tier === 2 ? 16 : 12) * Math.min(vScale.current * 1.1, 1.4) + 10
+      const d = Math.hypot(mx - sx, my - sy)
+      if (d < hit && d < md) { md = d; found = n }
+    })
+    hovNodeRef.current = found
+    if (found && tipRef.current) {
+      const parts = [TIER_LABEL[found.tier], CAT_NAMES[found.cat]]
+      if (found.edu) parts.push(EDU_LABELS[found.edu])
+      if (found.hrs) parts.push(found.hrs + 'h')
+      if (found.level) parts.push(found.level.toUpperCase())
+      parts.push((prereqOf[found.id] || []).length + ' prereqs')
+      tipRef.current.children[0].textContent = found.name
+      tipRef.current.children[1].textContent = parts.filter(Boolean).join(' · ')
+      tipRef.current.style.left = (e.clientX + 14) + 'px'
+      tipRef.current.style.top = (e.clientY - 8) + 'px'
+      tipRef.current.style.opacity = 1
+      wrap.style.cursor = 'pointer'
+    } else {
+      if (tipRef.current) tipRef.current.style.opacity = 0
+      if (!isPanRef.current && wrapRef.current) wrapRef.current.style.cursor = 'grab'
+    }
+  }
+
+  // Mouse events
+  useEffect(() => {
+    const wrap = wrapRef.current
+    if (!wrap) return
+
+    function onWheel(e) {
+      e.preventDefault()
+      const r = wrap.getBoundingClientRect()
+      const mx = e.clientX - r.left, my = e.clientY - r.top
+      const ns = Math.max(.05, Math.min(5, vScale.current * (e.deltaY < 0 ? 1.13 : .885)))
+      vTx.current = mx - (mx - vTx.current) * (ns / vScale.current)
+      vTy.current = my - (my - vTy.current) * (ns / vScale.current)
+      vScale.current = ns
+      if (zlblRef?.current) zlblRef.current.textContent = Math.round(ns * 100) + '%'
+    }
+    function onMouseDown(e) {
+      isPanRef.current = true
+      psxRef.current = e.clientX - vTx.current
+      psyRef.current = e.clientY - vTy.current
+      wrap.style.cursor = 'grabbing'
+    }
+    function onMouseMove(e) {
+      if (isPanRef.current) {
+        vTx.current = e.clientX - psxRef.current
+        vTy.current = e.clientY - psyRef.current
+      } else {
+        hoverCheck(e)
+      }
+    }
+    function onMouseUp() { isPanRef.current = false; wrap.style.cursor = 'grab' }
+    function onClick(e) {
+      const r = wrap.getBoundingClientRect()
+      const mx = e.clientX - r.left, my = e.clientY - r.top
+      let cl = null, md = Infinity
+      SKILL_NODES.forEach(n => {
+        const p = NODE_POSITIONS[n.id]
+        if (!p) return
+        const { sx, sy } = w2s(p.x, p.y)
+        const hit = (n.tier === 0 ? 6 : n.tier === 1 ? 10 : n.tier === 2 ? 16 : 12) * Math.min(vScale.current * 1.1, 1.4) + 10
+        const d = Math.hypot(mx - sx, my - sy)
+        if (d < hit && d < md) { md = d; cl = n }
+      })
+      if (cl) onNodeClick(cl)
+    }
+
+    wrap.addEventListener('wheel', onWheel, { passive: false })
+    wrap.addEventListener('mousedown', onMouseDown)
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    wrap.addEventListener('click', onClick)
+    return () => {
+      wrap.removeEventListener('wheel', onWheel)
+      wrap.removeEventListener('mousedown', onMouseDown)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+      wrap.removeEventListener('click', onClick)
+    }
+  }, [onNodeClick])
+
+  return (
+    <>
+      <canvas ref={canvasRef} style={{ position: 'absolute', top: 0, left: 0 }} />
+      <div
+        ref={tipRef}
+        style={{
+          position: 'fixed', pointerEvents: 'none',
+          background: 'var(--bg-panel-solid)', border: '1px solid rgba(200,168,75,.3)',
+          borderRadius: 'var(--radius-sm)', padding: '8px 11px', fontSize: 11,
+          color: 'var(--text-main)', boxShadow: '0 4px 20px rgba(0,0,0,.6)',
+          opacity: 0, transition: 'opacity .1s', zIndex: 200, maxWidth: 220
+        }}
+      >
+        <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 2 }} />
+        <div style={{ color: 'var(--text-dim)' }} />
+      </div>
+    </>
+  )
 }

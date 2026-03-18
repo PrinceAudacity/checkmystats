@@ -1,26 +1,27 @@
 import React from 'react'
 
-const layers = [
-  { label: 'Foundation', color: '#3A86FF' },
-  { label: 'Domain', color: '#06D6A0' },
-  { label: 'Professional', color: '#FFB703' },
-  { label: 'Career Outcome', color: '#E94560' },
+const rows = [
+  { dot: { width: 5, height: 5, borderRadius: '50%', background: '#8899bb' }, label: 'Foundation' },
+  { dot: { width: 8, height: 8, borderRadius: '50%', background: '#6688dd' }, label: 'Advanced' },
+  { dot: { width: 11, height: 11, borderRadius: '50%', background: '#aa66ee' }, label: 'Specialization' },
+  { dot: { width: 9, height: 9, borderRadius: 2, background: '#c8a84b', transform: 'rotate(45deg)' }, label: 'Career / Cert' },
 ]
 
 export default function Legend() {
   return (
-    <div className="absolute bottom-6 left-6 bg-black bg-opacity-60 rounded-lg p-4 z-10">
-      <div className="text-gray-400 text-xs uppercase tracking-wider mb-3">Map Layers</div>
-      {layers.map(l => (
-        <div key={l.label} className="flex items-center gap-2 mb-2">
-          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: l.color }} />
-          <span className="text-white text-xs">{l.label}</span>
+    <div style={{
+      position: 'absolute', bottom: 20, right: 16,
+      background: 'var(--bg-panel-solid)', border: '1px solid var(--border-light)',
+      borderRadius: 'var(--radius-sm)', padding: '10px 12px', zIndex: 20, fontSize: 11
+    }}>
+      {rows.map(({ dot, label }) => (
+        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: label === 'Career / Cert' ? 0 : 5 }}>
+          <div style={{ width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div style={dot} />
+          </div>
+          <span style={{ color: 'var(--text-dark)' }}>{label}</span>
         </div>
       ))}
-      <div className="border-t border-gray-600 mt-3 pt-3">
-        <div className="text-gray-400 text-xs">Click any node to explore</div>
-        <div className="text-gray-400 text-xs">→ Plot Path highlights your route</div>
-      </div>
     </div>
   )
 }

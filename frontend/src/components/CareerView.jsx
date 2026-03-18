@@ -1,0 +1,162 @@
+import React, { useRef, useEffect, useCallback } from 'react'
+import { CAT_COLOR, TIER_LABEL } from '../data/skillData'
+import { nById, buildFullPath } from '../utils/graph'
+
+const CARD_W = 160, CARD_H = 58
+
+export default function CareerView({ career, zlblRef, onNodeSelect, onHighlightPath }) {
+  const viewRef = useRef(null)
+  const panRef = useRef(null)
+  const edgesRef = useRef(null)
+  const nodesRef = useRef(null)
+  const panState = useRef({ tx: 0, ty: 0, scale: 1, isPan: false, sx: 0, sy: 0 })
+
+  function applyTransform() {
+    const s = panState.current
+    if (panRef.current) panRef.current.style.transform = `translate(${s.tx}px,${s.ty}px) scale(${s.scale})`
+    if (zlblRef?.current) zlblRef.current.textContent = Math.round(s.scale * 100) + '%'
+  }
+
+  const render = useCallback(() => {
+    if (!career || !nodesRef.current || !edgesRef.current || !panRef.current) return
+
+    const { nodeSet, edgeSet, positions: pos } = career
+    nodesRef.current.innerHTML = ''
+    edgesRef.current.innerHTML = ''
+
+    const xs = Object.values(pos).map(p => p.x)
+    const ys = Object.values(pos).map(p => p.y)
+    const svgW = Math.max(...xs) + CARD_W + 100
+    const svgH = Math.max(...ys) + CARD_H + 100
+
+    edgesRef.current.setAttribute('width', svgW)
+    edgesRef.current.setAttribute('height', svgH)
+    edgesRef.current.style.width = svgW + 'px'
+    edgesRef.current.style.height = svgH + 'px'
+    panRef.current.style.width = svgW + 'px'
+    panRef.current.style.height = svgH + 'px'
+
+    // Draw bezier edges
+    const edgeArr = [...edgeSet].map(e => e.split('→'))
+    edgeArr.forEach(([aId, bId]) => {
+      const pa = pos[aId], pb = pos[bId]
+      if (!pa || !pb) return
+      const x1 = pa.x + CARD_W, y1 = pa.y + CARD_H / 2
+      const x2 = pb.x, y2 = pb.y + CARD_H / 2
+      const dx = x2 - x1
+      const cpx = Math.max(Math.abs(dx) * .45, 30)
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      path.setAttribute('d', `M ${x1} ${y1} C ${x1 + cpx} ${y1}, ${x2 - cpx} ${y2}, ${x2} ${y2}`)
+      path.setAttribute('class', 'career-edge')
+      path.dataset.from = aId
+      path.dataset.to = bId
+      edgesRef.current.appendChild(path)
+    })
+
+    // Draw node cards
+    ;[...nodeSet].forEach(id => {
+      const n = nById[id]
+      if (!n) return
+      const p = pos[id]
+      if (!p) return
+      const col = CAT_COLOR[n.cat] || '#888'
+      const tierCls = n.tier === 0 ? 'cn-tier0' : n.tier === 2 ? 'cn-tier2' : n.tier === 3 ? 'cn-tier3' : ''
+      const card = document.createElement('div')
+      card.className = `career-node${tierCls ? ' ' + tierCls : ''}`
+      card.style.left = p.x + 'px'
+      card.style.top = p.y + 'px'
+      card.dataset.id = id
+      const statusLbl = TIER_LABEL[n.tier] || ''
+      const dotStyle = n.tier === 3
+        ? `background:${col};border-radius:2px;transform:rotate(45deg)`
+        : n.tier === 2 ? `background:${col};box-shadow:0 0 6px ${col}` : `background:${col}`
+      card.innerHTML = `
+        <div class="cn-header">
+          <div class="cn-dot" style="${dotStyle}"></div>
+          <div class="cn-title">${n.name}</div>
+        </div>
+        <div class="cn-meta">
+          <span class="cn-status" style="color:${col}">${statusLbl}</span>
+          ${n.hrs ? `<span>${n.hrs}h</span>` : ''}
+        </div>`
+      card.addEventListener('click', () => {
+        nodesRef.current.querySelectorAll('.cn-selected').forEach(el => el.classList.remove('cn-selected'))
+        card.classList.add('cn-selected')
+        onNodeSelect(n)
+        const path = buildFullPath(id)
+        onHighlightPath(path)
+        edgesRef.current.querySelectorAll('.career-edge').forEach(pe => {
+          const key = pe.dataset.from + '→' + pe.dataset.to
+          pe.classList.toggle('ce-hl', path.edgeSet.has(key))
+        })
+      })
+      nodesRef.current.appendChild(card)
+    })
+
+    // Fit view
+    if (viewRef.current) {
+      const vw = viewRef.current.offsetWidth, vh = viewRef.current.offsetHeight
+      const bx1 = Math.max(...xs) + CARD_W + 40, by1 = Math.max(...ys) + CARD_H + 40
+      const bx0 = Math.min(...xs) - 40, by0 = Math.min(...ys) - 40
+      const ts = Math.min(vw / (bx1 - bx0), vh / (by1 - by0), 1.8)
+      panState.current = { tx: vw / 2 - (bx0 + bx1) / 2 * ts, ty: vh / 2 - (by0 + by1) / 2 * ts, scale: ts, isPan: false, sx: 0, sy: 0 }
+      applyTransform()
+    }
+  }, [career, onNodeSelect, onHighlightPath])
+
+  useEffect(() => { render() }, [render])
+
+  // Pan/zoom events
+  useEffect(() => {
+    const cv = viewRef.current
+    if (!cv) return
+
+    function onWheel(e) {
+      e.preventDefault()
+      const r = cv.getBoundingClientRect()
+      const mx = e.clientX - r.left, my = e.clientY - r.top
+      const ns = Math.max(.15, Math.min(4, panState.current.scale * (e.deltaY < 0 ? 1.12 : .9)))
+      panState.current.tx = mx - (mx - panState.current.tx) * (ns / panState.current.scale)
+      panState.current.ty = my - (my - panState.current.ty) * (ns / panState.current.scale)
+      panState.current.scale = ns
+      applyTransform()
+    }
+    function onMouseDown(e) {
+      if (e.target.closest('.career-node')) return
+      panState.current.isPan = true
+      panState.current.sx = e.clientX - panState.current.tx
+      panState.current.sy = e.clientY - panState.current.ty
+      cv.style.cursor = 'grabbing'
+    }
+    function onMouseMove(e) {
+      if (!panState.current.isPan) return
+      panState.current.tx = e.clientX - panState.current.sx
+      panState.current.ty = e.clientY - panState.current.sy
+      applyTransform()
+    }
+    function onMouseUp() {
+      panState.current.isPan = false
+      cv.style.cursor = 'grab'
+    }
+
+    cv.addEventListener('wheel', onWheel, { passive: false })
+    cv.addEventListener('mousedown', onMouseDown)
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      cv.removeEventListener('wheel', onWheel)
+      cv.removeEventListener('mousedown', onMouseDown)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [])
+
+  return (
+    <div ref={viewRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden', cursor: 'grab' }}>
+      <div ref={panRef} style={{ position: 'absolute', top: 0, left: 0, transformOrigin: '0 0', willChange: 'transform' }}>
+        <svg ref={edgesRef} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', overflow: 'visible' }} />
+        <div ref={nodesRef} />
+      </div>
+    </div>
+  )
+}

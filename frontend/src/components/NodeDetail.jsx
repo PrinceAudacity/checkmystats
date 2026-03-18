@@ -1,135 +1,120 @@
-import React, { useState } from 'react'
-import { getPath } from '../services/api'
+import React from 'react'
+import { CAT_COLOR, CAT_NAMES, TIER_LABEL, EDU_LABELS } from '../data/skillData'
+import { prereqOf, leadsTo, nById } from '../utils/graph'
 
-const LAYER_LABELS = {
-  1: 'Foundation',
-  2: 'Domain',
-  3: 'Professional',
-  4: 'Career Outcome',
-}
-
-const LAYER_COLORS = {
-  1: 'text-blue-400',
-  2: 'text-green-400',
-  3: 'text-yellow-400',
-  4: 'text-red-400',
-}
-
-export default function NodeDetail({ node, graphData, onClose, onPathFind, onNodeSelect }) {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-
-  const prerequisites = graphData.nodes.filter(n =>
-    node.prerequisite_ids?.includes(n.id)
-  )
-
-  const unlocks = graphData.nodes.filter(n =>
-    node.unlocks_ids?.includes(n.id)
-  )
-
-  const handlePathFind = async () => {
-    // Find path from counting (root) to this node
-    const rootId = 'math_counting'
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await getPath(rootId, node.id)
-      onPathFind(result)
-    } catch (e) {
-      setError('No path found from root to this node.')
-    } finally {
-      setLoading(false)
-    }
+export default function NodeDetail({ node, onNodeSelect, onTraceNode, onClearPath }) {
+  if (!node) {
+    return (
+      <aside style={panelStyle}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', fontSize: 12, textAlign: 'center', padding: 20 }}>
+          Click a node on the map to view details
+        </div>
+      </aside>
+    )
   }
 
+  const col = CAT_COLOR[node.cat] || '#888'
+  const tierLabel = [TIER_LABEL[node.tier], node.edu ? EDU_LABELS[node.edu] : null, node.level ? node.level.toUpperCase() : null].filter(Boolean).join(' · ')
+  const tags = [
+    { label: CAT_NAMES[node.cat] || node.cat, style: { borderColor: col + '44', color: col } },
+    node.hrs && { label: node.hrs + 'h' },
+    node.edu && { label: EDU_LABELS[node.edu] },
+    node.level && { label: node.level.toUpperCase() },
+    { label: 'Tier ' + node.tier },
+  ].filter(Boolean)
+
+  const pres = (prereqOf[node.id] || []).map(id => nById[id]).filter(Boolean)
+  const leads = (leadsTo[node.id] || []).map(id => nById[id]).filter(Boolean)
+
   return (
-    <div className="absolute right-0 top-0 bottom-0 w-80 bg-gray-900 bg-opacity-95
-                    border-l border-gray-700 overflow-y-auto z-20 p-5">
-
-      {/* Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <span className={`text-xs font-bold uppercase tracking-wider ${LAYER_COLORS[node.layer]}`}>
-            {LAYER_LABELS[node.layer]}
-          </span>
-          <h2 className="text-white text-lg font-bold mt-1">{node.display_name}</h2>
-          <span className="text-gray-400 text-xs">{node.subject_category}</span>
-        </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-white text-xl ml-2">×</button>
-      </div>
-
-      {/* Summary */}
-      <p className="text-gray-300 text-sm leading-relaxed mb-4">{node.summary}</p>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        {node.time_estimate_hours && (
-          <div className="bg-gray-800 rounded p-3">
-            <div className="text-gray-400 text-xs">Time to master</div>
-            <div className="text-white font-bold">{node.time_estimate_hours}h</div>
+    <aside style={panelStyle}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{ padding: '20px 18px 14px', borderBottom: '1px solid var(--border-light)' }}>
+          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-dim)', marginBottom: 6 }}>
+            {tierLabel}
           </div>
-        )}
-        {node.assessment_count && (
-          <div className="bg-gray-800 rounded p-3">
-            <div className="text-gray-400 text-xs">Assessments</div>
-            <div className="text-white font-bold">{node.assessment_count}</div>
+          <div style={{ fontSize: 17, fontWeight: 500, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 10, height: 10, borderRadius: 3, flexShrink: 0, background: col }} />
+            {node.name}
           </div>
-        )}
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+            {tags.map((t, i) => (
+              <span key={i} className="pill-tag" style={t.style || {}}>{t.label}</span>
+            ))}
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {pres.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span className="label-caps">Prerequisites ({pres.length})</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {pres.map(p => (
+                  <div key={p.id} className="prereq-item" onClick={() => onNodeSelect(p)}>
+                    <div className="prereq-dot" style={{ background: CAT_COLOR[p.cat] || '#888' }} />
+                    {p.name}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {leads.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span className="label-caps">Leads to ({leads.length})</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {leads.slice(0, 15).map(l => (
+                  <div key={l.id} className="prereq-item" onClick={() => onNodeSelect(l)}>
+                    <div className="prereq-dot" style={{ background: CAT_COLOR[l.cat] || '#888' }} />
+                    {l.name}
+                    {l.level && <span style={{ color: 'var(--text-dim)', fontSize: 9 }}>{l.level.toUpperCase()}</span>}
+                  </div>
+                ))}
+                {leads.length > 15 && (
+                  <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>+{leads.length - 15} more</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {pres.length === 0 && leads.length === 0 && (
+            <p style={{ fontSize: 12, color: 'var(--text-dark)', padding: '8px 0' }}>No connections.</p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border-light)' }}>
+          <button
+            onClick={() => onTraceNode(node.id)}
+            style={{
+              width: '100%', padding: 10, borderRadius: 'var(--radius-sm)',
+              border: '1px solid rgba(200,168,75,.4)', background: 'var(--gold-dim)',
+              color: 'var(--gold)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)'
+            }}
+          >
+            Trace prerequisite path
+          </button>
+          <button
+            onClick={onClearPath}
+            style={{
+              width: '100%', padding: 8, borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border-light)', background: 'transparent',
+              color: 'var(--text-dim)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)', marginTop: 6
+            }}
+          >
+            Clear path
+          </button>
+        </div>
       </div>
-
-      {/* Mastery threshold */}
-      {node.mastery_threshold && (
-        <div className="bg-gray-800 rounded p-3 mb-4">
-          <div className="text-gray-400 text-xs mb-1">Mastery means</div>
-          <div className="text-gray-200 text-sm">{node.mastery_threshold}</div>
-        </div>
-      )}
-
-      {/* Prerequisites */}
-      {prerequisites.length > 0 && (
-        <div className="mb-4">
-          <div className="text-gray-400 text-xs uppercase tracking-wider mb-2">Requires first</div>
-          {prerequisites.map(p => (
-            <button
-              key={p.id}
-              onClick={() => onNodeSelect(p)}
-              className="block w-full text-left text-sm text-blue-300 hover:text-white
-                         bg-gray-800 hover:bg-gray-700 rounded px-3 py-2 mb-1 transition-colors"
-            >
-              {p.display_name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Unlocks */}
-      {unlocks.length > 0 && (
-        <div className="mb-4">
-          <div className="text-gray-400 text-xs uppercase tracking-wider mb-2">Unlocks</div>
-          {unlocks.map(u => (
-            <button
-              key={u.id}
-              onClick={() => onNodeSelect(u)}
-              className="block w-full text-left text-sm text-green-300 hover:text-white
-                         bg-gray-800 hover:bg-gray-700 rounded px-3 py-2 mb-1 transition-colors"
-            >
-              {u.display_name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Pathfinder button */}
-      <button
-        onClick={handlePathFind}
-        disabled={loading}
-        className="w-full bg-brand-accent hover:bg-red-600 disabled:opacity-50
-                   text-white font-bold py-3 rounded transition-colors"
-      >
-        {loading ? 'Finding path...' : '→ Plot path to here'}
-      </button>
-
-      {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
-    </div>
+    </aside>
   )
+}
+
+const panelStyle = {
+  gridArea: 'panel',
+  background: 'var(--bg-panel)',
+  borderLeft: '1px solid var(--border-light)',
+  display: 'flex', flexDirection: 'column', zIndex: 4, overflow: 'hidden'
 }
