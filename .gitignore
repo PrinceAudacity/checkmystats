@@ -36,3 +36,5 @@ frontend/dist/
 
 # Pytest cache
 .pytest_cache/
+
+backend-spec.md
