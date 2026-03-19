@@ -58,7 +58,7 @@ export default function Sidebar({
       display: 'flex', flexDirection: 'column', zIndex: 4, overflow: 'hidden'
     }}>
       {/* Header area */}
-      <div style={{ padding: '12px 12px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ padding: '12px 12px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
         {/* Search */}
         <div
           style={{
@@ -108,7 +108,7 @@ export default function Sidebar({
               key={m}
               onClick={() => onSwitchMode(m)}
               style={{
-                flex: 1, padding: '9px 0', textAlign: 'center', fontSize: 11,
+                flex: 1, padding: '11px 0', textAlign: 'center', fontSize: 11,
                 fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em',
                 color: sidebarMode === m ? 'var(--accent-blue)' : 'var(--text-dim)',
                 cursor: 'pointer',

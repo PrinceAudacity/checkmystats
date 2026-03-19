@@ -1,7 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useAppState from './hooks/useAppState'
-import useTheme from './hooks/useTheme'
 import useCanvasView from './hooks/useCanvasView'
 import useSkillData from './hooks/useSkillData'
 import { NODE_POSITIONS } from './utils/layout'
@@ -23,7 +22,7 @@ export default function App() {
   const canvasRef = useRef(null)
   const navigate = useNavigate()
 
-  const { theme, toggleTheme } = useTheme()
+
   const { vTx, vTy, vScale, zlblRef, resetView, zoomBy, animateTo } = useCanvasView(wrapRef)
   const { loading: dataLoading } = useSkillData()
 
@@ -44,6 +43,13 @@ export default function App() {
   function openDashboard(career) { navigate('/career/' + career.id) }
 
   const activeCareerData = addedCareers.find(c => c.id === activeCareer) || null
+
+  const [careerProgress, setCareerProgress] = useState({})
+  useEffect(() => {
+    if (!activeCareer) { setCareerProgress({}); return }
+    try { setCareerProgress(JSON.parse(localStorage.getItem('cms_progress_' + activeCareer)) || {}) }
+    catch { setCareerProgress({}) }
+  }, [activeCareer])
 
   function handleNodeClick(node) {
     setSelNode(node)
@@ -117,8 +123,6 @@ export default function App() {
         breadcrumb={breadcrumb}
         onResetView={resetView}
         onClearPath={clearPath}
-        onToggleTheme={toggleTheme}
-        theme={theme}
       />
 
       <Toolbar
@@ -171,6 +175,7 @@ export default function App() {
         {activeCareer && activeCareerData && (
           <CareerView
             career={activeCareerData}
+            progress={careerProgress}
             zlblRef={zlblRef}
             onNodeSelect={node => { setSelNode(node); setPanelOpen(true) }}
             onHighlightPath={path => setActivePath(path)}

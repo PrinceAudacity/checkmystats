@@ -3,9 +3,9 @@
 @tailwind utilities;
 
 :root {
-  --bg-canvas: #0e0e1a;
+  --bg-canvas: #111122;
   --bg-panel: rgba(10,10,18,0.92);
-  --bg-panel-solid: #09090f;
+  --bg-panel-solid: #0d0d1a;
   --bg-hover: rgba(255,255,255,0.045);
   --accent-blue: #3A7BFF;
   --accent-blue-dim: rgba(58,123,255,0.13);
@@ -66,7 +66,7 @@ body {
 }
 
 .label-caps {
-  font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
   color: var(--text-dim); font-weight: 600;
 }
 .pill-tag {
@@ -98,6 +98,24 @@ body {
 }
 body.light .career-node.cn-tier0 { opacity: .55; }
 
+/* Progress status styles */
+.career-node.cn-mastered {
+  border-color: rgba(34,197,94,.55) !important;
+  background: rgba(34,197,94,.07) !important;
+  opacity: 1 !important;
+}
+.career-node.cn-mastered:hover { border-color: rgba(34,197,94,.85) !important; }
+.career-node.cn-inprogress {
+  border-color: rgba(59,130,246,.55) !important;
+  background: rgba(59,130,246,.07) !important;
+  opacity: 1 !important;
+}
+.career-node.cn-inprogress:hover { border-color: rgba(59,130,246,.85) !important; }
+.career-node.cn-notstarted { opacity: .38; }
+.career-node.cn-notstarted:hover { opacity: 1; }
+body.light .career-node.cn-notstarted { opacity: .35; }
+body.light .career-node.cn-notstarted:hover { opacity: 1; }
+
 /* Planner button on tier-2 cards */
 .cn-planner-btn {
   position: absolute; bottom: 6px; right: 8px;
@@ -122,7 +140,7 @@ body.light .career-edge.ce-hl { stroke: var(--accent-blue); }
 }
 .search-dropdown.visible { display: block; }
 .search-result-item {
-  padding: 8px 12px; cursor: pointer; display: flex; flex-direction: column;
+  padding: 10px 14px; cursor: pointer; display: flex; flex-direction: column;
   gap: 2px; border-bottom: 1px solid rgba(255,255,255,.04);
 }
 .search-result-item:last-child { border-bottom: none; }
@@ -133,9 +151,9 @@ body.light .career-edge.ce-hl { stroke: var(--accent-blue); }
 
 /* List items in sidebar */
 .list-item {
-  padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer;
-  display: flex; align-items: center; gap: 8px; margin-bottom: 1px;
-  position: relative; font-size: 12px; transition: background .15s;
+  padding: 10px 12px; border-radius: var(--radius-sm); cursor: pointer;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+  position: relative; font-size: 12px; line-height: 1.4; transition: background .15s;
 }
 .list-item:hover { background: var(--bg-hover); }
 .list-item.active { background: var(--accent-blue-dim); border: 1px solid var(--border-blue); }
@@ -150,14 +168,14 @@ body.light .career-edge.ce-hl { stroke: var(--accent-blue); }
 .list-item:hover .li-remove { opacity: 1; }
 .list-item .li-remove:hover { color: #e05555; background: rgba(224,85,85,.12); }
 .list-group-label {
-  padding: 10px 10px 5px; font-size: 9px; text-transform: uppercase;
+  padding: 12px 12px 6px; font-size: 10px; text-transform: uppercase;
   letter-spacing: .07em; color: var(--text-dim); font-weight: 600;
 }
 
 /* Prereq items in panel */
 .prereq-item {
   display: flex; align-items: center; gap: 7px; font-size: 11px;
-  color: var(--text-dark); cursor: pointer; padding: 4px 6px; border-radius: 3px;
+  color: var(--text-dark); cursor: pointer; padding: 6px 6px; border-radius: 3px;
 }
 .prereq-item:hover { background: var(--bg-hover); color: var(--text-main); }
 .prereq-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }

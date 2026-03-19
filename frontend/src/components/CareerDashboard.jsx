@@ -5,6 +5,7 @@ import { nById, leadsTo, prereqOf, buildFullPath, layoutCareerDAG } from '../uti
 import '../styles/dashboard.css'
 import useAuth from '../hooks/useAuth'
 import { fetchUserSkillStatuses, upsertSkillStatus } from '../services/dataService'
+import NavActions from './NavActions'
 
 // Build a career object from a spec node id (same logic as useAppState.addCareer)
 function buildCareer(specId) {
@@ -89,6 +90,8 @@ export default function CareerDashboard() {
   const [progress, setProgress]     = useState(() => loadProgress(id))
   const [viewMode, setViewMode]     = useState('phases')
   const [activePhase, setActivePhase] = useState(null)
+  const [openPhases, setOpenPhases]   = useState(() => new Set(['p0', 'p1', 'p2', 'p3']))
+  const [skipModal, setSkipModal]     = useState(null) // { nodeId, prereqs }
 
   // Load from Supabase and merge (remote wins)
   useEffect(() => {
@@ -109,7 +112,7 @@ export default function CareerDashboard() {
   if (!career) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-dim)', fontFamily: 'var(--font)', fontSize: 14 }}>
       Career not found: {id}
-      <button onClick={() => navigate('/')} style={{ marginLeft: 12, padding: '5px 12px', cursor: 'pointer' }}>← Back</button>
+      <button onClick={() => navigate('/app')} style={{ marginLeft: 12, padding: '5px 12px', cursor: 'pointer' }}>← Back</button>
     </div>
   )
 
@@ -130,6 +133,35 @@ export default function CareerDashboard() {
       .filter(e => e.endsWith('→' + id))
       .map(e => e.split('→')[0])
       .every(p => getStatus(p) === 'mastered')
+  }
+
+  function getLockedPrereqs(targetId) {
+    const result = new Set()
+    const queue = [targetId]
+    const visited = new Set([targetId])
+    while (queue.length) {
+      const cur = queue.shift()
+      const preds = [...career.edgeSet]
+        .filter(e => e.endsWith('→' + cur))
+        .map(e => e.split('→')[0])
+      for (const pred of preds) {
+        if (visited.has(pred)) continue
+        visited.add(pred)
+        if (getStatus(pred) !== 'mastered') {
+          result.add(pred)
+          queue.push(pred)
+        }
+      }
+    }
+    return [...result]
+  }
+
+  function skipToNode(nodeId, prereqs) {
+    const updates = {}
+    prereqs.forEach(pid => { updates[pid] = 'mastered' })
+    setProgress(p => ({ ...p, ...updates }))
+    if (userId) prereqs.forEach(pid => upsertSkillStatus(userId, pid, 'mastered'))
+    setSkipModal(null)
   }
 
   // ── Stats ──────────────────────────────────────────────────────────────────
@@ -212,11 +244,12 @@ export default function CareerDashboard() {
         <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>Path Planner →</span>
         <span style={{ fontSize: 12, color: 'var(--gold)', fontWeight: 500 }}>{careerNode?.name || career.name}</span>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             onClick={() => { if (confirm('Reset all progress for this career?')) setProgress({}) }}
             style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border-light)', background: 'transparent', color: 'var(--text-dim)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)' }}
           >Reset progress</button>
+          <NavActions />
         </div>
       </nav>
 
@@ -234,7 +267,7 @@ export default function CareerDashboard() {
         {/* Progress ring */}
         <div>
           <div style={sbTitleStyle}>Your progress</div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '14px 0' }}>
             <svg width="90" height="90" viewBox="0 0 90 90">
               <circle cx="45" cy="45" r="38" fill="none" stroke="var(--bg-hover)" strokeWidth="7" />
               <circle cx="45" cy="45" r="38" fill="none" stroke="var(--green,#2dd4bf)"
@@ -260,7 +293,10 @@ export default function CareerDashboard() {
               const isActive = activePhase === p.id
               return (
                 <div key={p.id}
-                  onClick={() => setActivePhase(ap => ap === p.id ? null : p.id)}
+                  onClick={() => {
+                    setActivePhase(ap => ap === p.id ? null : p.id)
+                    setOpenPhases(prev => { const s = new Set(prev); s.has(p.id) ? s.delete(p.id) : s.add(p.id); return s })
+                  }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px',
                     borderRadius: 'var(--radius-sm)', cursor: 'pointer', transition: 'all .15s',
@@ -362,7 +398,7 @@ export default function CareerDashboard() {
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 14, lineHeight: 1.6 }}>
             Based on your current progress — what's available right now vs. what's locked behind unmet prerequisites.
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14 }}>
             {[
               { lbl: 'Completed',    val: stats.pct + '%', sub: `${stats.mastered} nodes mastered`,   cls: stats.pct >= 50 ? 'good' : 'warn' },
               { lbl: 'Unlocked now', val: nextUp.length,    sub: 'ready to start',                     cls: nextUp.length > 0 ? 'good' : 'warn' },
@@ -437,7 +473,7 @@ export default function CareerDashboard() {
         {/* ── Phase blocks or Critical path ── */}
         {viewMode === 'phases' ? (
           phases.map(phase => {
-            const isOpen = !activePhase || activePhase === phase.id
+            const isOpen = openPhases.has(phase.id)
             const doneCount = phase.nodes.filter(id => getStatus(id) === 'mastered').length
             const inProgCount = phase.nodes.filter(id => getStatus(id) === 'inprogress').length
             const phasePct = phase.nodes.length ? Math.round(doneCount / phase.nodes.length * 100) : 0
@@ -445,9 +481,9 @@ export default function CareerDashboard() {
               <div key={phase.id} style={{ background: 'var(--bg-panel-solid)', border: '1px solid var(--border-light)', borderRadius: 10, overflow: 'hidden' }}>
                 {/* Phase header */}
                 <div
-                  onClick={() => setActivePhase(ap => ap === phase.id ? null : phase.id)}
+                  onClick={() => setOpenPhases(prev => { const s = new Set(prev); s.has(phase.id) ? s.delete(phase.id) : s.add(phase.id); return s })}
                   style={{
-                    padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '18px 18px', display: 'flex', alignItems: 'center', gap: 12,
                     borderBottom: isOpen ? '1px solid var(--border-light)' : 'none',
                     cursor: 'pointer', userSelect: 'none',
                   }}
@@ -483,14 +519,17 @@ export default function CareerDashboard() {
                         const col = CAT_COLOR[n.cat] || '#888'
                         return (
                           <div key={id}
-                            onClick={() => unlocked ? cycleStatus(id) : alert('This node is locked. Complete its prerequisites first.')}
+                            onClick={() => {
+                              if (unlocked) { cycleStatus(id) }
+                              else { setSkipModal({ nodeId: id, prereqs: getLockedPrereqs(id) }) }
+                            }}
                             style={{
                               border: isTarget
                                 ? '1px solid var(--gold-border,rgba(200,168,75,.3))'
                                 : st === 'mastered'   ? '1px solid rgba(45,212,191,.3)'
                                 : st === 'inprogress' ? '1px solid var(--border-blue)'
                                 : '1px solid var(--border-light)',
-                              borderRadius: 'var(--radius-sm)', padding: '10px 12px', cursor: unlocked ? 'pointer' : 'default',
+                              borderRadius: 'var(--radius-sm)', padding: '10px 12px', cursor: 'pointer',
                               background: isTarget
                                 ? 'var(--gold-dim,rgba(200,168,75,.1))'
                                 : st === 'mastered'   ? 'rgba(45,212,191,.08)'
@@ -591,11 +630,104 @@ export default function CareerDashboard() {
         )}
 
       </main>
+
+      {/* ── Skip-ahead modal ── */}
+      {skipModal && (() => {
+        const target = nById[skipModal.nodeId]
+        const prereqs = skipModal.prereqs
+        const totalHrs = prereqs.reduce((s, pid) => s + (nById[pid]?.hrs || 0), 0)
+        const SHOW_MAX = 8
+        return (
+          <div
+            onClick={() => setSkipModal(null)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 300,
+              background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(2px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: 'var(--bg-panel-solid)', border: '1px solid var(--border-light)',
+                borderRadius: 12, padding: '24px 26px', maxWidth: 460, width: '90%',
+                boxShadow: '0 24px 60px rgba(0,0,0,.6)',
+                display: 'flex', flexDirection: 'column', gap: 16,
+              }}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+                  background: 'rgba(233,69,96,.1)', border: '1px solid rgba(233,69,96,.3)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
+                }}>⚡</div>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 3 }}>
+                    Skip ahead to {target?.name}?
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5 }}>
+                    This node is locked. Continuing will mark all{' '}
+                    <strong style={{ color: 'var(--text-main)' }}>{prereqs.length} prerequisite{prereqs.length !== 1 ? 's' : ''}</strong>
+                    {totalHrs > 0 && <> (~<strong style={{ color: 'var(--gold)' }}>{totalHrs}h</strong>)</>}
+                    {' '}as mastered — use this if you already know these topics.
+                  </div>
+                </div>
+              </div>
+
+              {/* Prereq list */}
+              <div style={{
+                background: 'var(--bg-panel)', border: '1px solid var(--border-light)',
+                borderRadius: 8, padding: '10px 12px', maxHeight: 200, overflowY: 'auto',
+                display: 'flex', flexDirection: 'column', gap: 4,
+              }}>
+                {prereqs.slice(0, SHOW_MAX).map(pid => {
+                  const pn = nById[pid]
+                  const col = CAT_COLOR[pn?.cat] || '#888'
+                  return (
+                    <div key={pid} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: col, flexShrink: 0 }} />
+                      <span style={{ flex: 1 }}>{pn?.name}</span>
+                      {pn?.hrs > 0 && <span style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>{pn.hrs}h</span>}
+                    </div>
+                  )
+                })}
+                {prereqs.length > SHOW_MAX && (
+                  <div style={{ fontSize: 11, color: 'var(--text-dim)', paddingTop: 4 }}>
+                    +{prereqs.length - SHOW_MAX} more nodes
+                  </div>
+                )}
+              </div>
+
+              {/* Buttons */}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setSkipModal(null)}
+                  style={{
+                    padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border-light)',
+                    background: 'transparent', color: 'var(--text-dim)', fontSize: 12,
+                    cursor: 'pointer', fontFamily: 'var(--font)',
+                  }}
+                >Cancel</button>
+                <button
+                  onClick={() => skipToNode(skipModal.nodeId, prereqs)}
+                  style={{
+                    padding: '8px 18px', borderRadius: 6, border: '1px solid rgba(233,69,96,.4)',
+                    background: 'rgba(233,69,96,.12)', color: '#e94560', fontSize: 12,
+                    fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)',
+                  }}
+                >Mark {prereqs.length} node{prereqs.length !== 1 ? 's' : ''} as mastered</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
     </div>
   )
 }
 
 const sbTitleStyle = {
-  fontSize: 9, textTransform: 'uppercase', letterSpacing: '.07em',
+  fontSize: 11, textTransform: 'uppercase', letterSpacing: '.07em',
   color: 'var(--text-dim)', fontWeight: 600, marginBottom: 8
 }

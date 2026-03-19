@@ -42,7 +42,7 @@ export default function NodeDetail({ node, panelOpen, addedCareers, onNodeSelect
 
         {/* Header */}
         <div style={{ padding: '20px 18px 14px', borderBottom: '1px solid var(--border-light)' }}>
-          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-dim)', marginBottom: 5 }}>
+          <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-dim)', marginBottom: 5 }}>
             {breadcrumb}
           </div>
           <div style={{ fontSize: 18, fontWeight: 500, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, paddingRight: 20 }}>
@@ -62,7 +62,7 @@ export default function NodeDetail({ node, panelOpen, addedCareers, onNodeSelect
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
           {/* Stats grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <StatCell label="Tier" value={tierLabel} />
             <StatCell label="Hours" value={node.hrs ? node.hrs + 'h' : '—'} />
             <StatCell label="Category" value={catName} />
@@ -73,7 +73,7 @@ export default function NodeDetail({ node, panelOpen, addedCareers, onNodeSelect
           {pres.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span className="label-caps">Prerequisites ({pres.length})</span>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {pres.map(p => (
                   <div key={p.id} className="prereq-item" onClick={() => onNodeSelect(p)}>
                     <div className="prereq-dot" style={{ background: CAT_COLOR[p.cat] || '#888' }} />
@@ -88,7 +88,7 @@ export default function NodeDetail({ node, panelOpen, addedCareers, onNodeSelect
           {leads.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span className="label-caps">Leads to ({leads.length})</span>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {leads.slice(0, 15).map(l => (
                   <div key={l.id} className="prereq-item" onClick={() => onNodeSelect(l)}>
                     <div className="prereq-dot" style={{ background: CAT_COLOR[l.cat] || '#888' }} />
@@ -153,10 +153,10 @@ export default function NodeDetail({ node, panelOpen, addedCareers, onNodeSelect
 function StatCell({ label, value }) {
   return (
     <div style={{
-      background: 'var(--bg-hover)', borderRadius: 5, padding: '7px 10px',
+      background: 'var(--bg-hover)', borderRadius: 5, padding: 12,
       border: '1px solid var(--border-light)'
     }}>
-      <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-dim)', marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-dim)', marginBottom: 3 }}>{label}</div>
       <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-main)' }}>{value}</div>
     </div>
   )

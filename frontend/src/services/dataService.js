@@ -1,26 +1,4 @@
 import { supabase } from './supabase'
-import { SKILL_NODES, EDGES } from '../data/skillData'
-
-export async function fetchNodes() {
-  if (!supabase) return SKILL_NODES
-  const { data, error } = await supabase.from('nodes').select('*')
-  if (error || !data?.length) return SKILL_NODES
-  return data
-}
-
-export async function fetchEdges() {
-  if (!supabase) return EDGES
-  const { data, error } = await supabase.from('edges').select('*')
-  if (error || !data?.length) return EDGES
-  return data
-}
-
-export async function fetchCategories() {
-  if (!supabase) return null
-  const { data, error } = await supabase.from('categories').select('*')
-  if (error) return null
-  return data
-}
 
 // ── Status helpers ──────────────────────────────────────
 const TO_BACKEND  = { notstarted: 'not_started', inprogress: 'in_progress', mastered: 'mastered' }
@@ -61,9 +39,11 @@ export async function fetchUserCareerPaths(userId) {
 
 export async function insertCareerPath(userId, targetId) {
   if (!supabase || !userId) return
-  await supabase
+  const { error } = await supabase
     .from('user_career_paths')
-    .upsert({ user_id: userId, target_id: targetId }, { onConflict: 'user_id,target_id' })
+    .insert({ user_id: userId, target_id: targetId })
+  // 23505 = unique_violation: career already saved, nothing to do
+  if (error && error.code !== '23505') console.error('insertCareerPath:', error.message)
 }
 
 export async function deleteCareerPath(userId, targetId) {

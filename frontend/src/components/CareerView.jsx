@@ -4,7 +4,7 @@ import { nById, buildFullPath } from '../utils/graph'
 
 const CARD_W = 160, CARD_H = 58
 
-export default function CareerView({ career, zlblRef, onNodeSelect, onHighlightPath, onOpenDashboard }) {
+export default function CareerView({ career, progress = {}, zlblRef, onNodeSelect, onHighlightPath, onOpenDashboard }) {
   const viewRef = useRef(null)
   const panRef = useRef(null)
   const edgesRef = useRef(null)
@@ -19,6 +19,7 @@ export default function CareerView({ career, zlblRef, onNodeSelect, onHighlightP
 
   const render = useCallback(() => {
     if (!career || !nodesRef.current || !edgesRef.current || !panRef.current) return
+    const getStatus = id => progress[id] || 'notstarted'
 
     const { nodeSet, edgeSet, positions: pos } = career
     nodesRef.current.innerHTML = ''
@@ -61,22 +62,27 @@ export default function CareerView({ career, zlblRef, onNodeSelect, onHighlightP
       if (!p) return
       const col = CAT_COLOR[n.cat] || '#888'
       const tierCls = n.tier === 0 ? 'cn-tier0' : n.tier === 2 ? 'cn-tier2' : n.tier === 3 ? 'cn-tier3' : ''
+      const st = getStatus(id)
+      const stCls = st === 'mastered' ? 'cn-mastered' : st === 'inprogress' ? 'cn-inprogress' : 'cn-notstarted'
       const card = document.createElement('div')
-      card.className = `career-node${tierCls ? ' ' + tierCls : ''}`
+      card.className = `career-node${tierCls ? ' ' + tierCls : ''} ${stCls}`
       card.style.left = p.x + 'px'
       card.style.top = p.y + 'px'
       card.dataset.id = id
-      const statusLbl = TIER_LABEL[n.tier] || ''
       const dotStyle = n.tier === 3
         ? `background:${col};border-radius:2px;transform:rotate(45deg)`
         : n.tier === 2 ? `background:${col};box-shadow:0 0 6px ${col}` : `background:${col}`
+      const stIcon  = st === 'mastered' ? '✓' : st === 'inprogress' ? '◑' : ''
+      const stColor = st === 'mastered' ? '#22c55e' : st === 'inprogress' ? 'var(--accent-blue)' : col
+      const stLabel = st === 'mastered' ? 'Mastered' : st === 'inprogress' ? 'In Progress' : TIER_LABEL[n.tier] || ''
       card.innerHTML = `
         <div class="cn-header">
           <div class="cn-dot" style="${dotStyle}"></div>
           <div class="cn-title">${n.name}</div>
+          ${stIcon ? `<div class="cn-st-icon" style="color:${stColor};font-size:11px;margin-left:auto;flex-shrink:0">${stIcon}</div>` : ''}
         </div>
         <div class="cn-meta">
-          <span class="cn-status" style="color:${col}">${statusLbl}</span>
+          <span class="cn-status" style="color:${stColor}">${stLabel}</span>
           ${n.hrs ? `<span>${n.hrs}h</span>` : ''}
         </div>`
       if (n.tier === 2 && onOpenDashboard) {
@@ -108,11 +114,11 @@ export default function CareerView({ career, zlblRef, onNodeSelect, onHighlightP
       const vw = viewRef.current.offsetWidth, vh = viewRef.current.offsetHeight
       const bx1 = Math.max(...xs) + CARD_W + 40, by1 = Math.max(...ys) + CARD_H + 40
       const bx0 = Math.min(...xs) - 40, by0 = Math.min(...ys) - 40
-      const ts = Math.min(vw / (bx1 - bx0), vh / (by1 - by0), 1.8)
-      panState.current = { tx: vw / 2 - (bx0 + bx1) / 2 * ts, ty: vh / 2 - (by0 + by1) / 2 * ts, scale: ts, isPan: false, sx: 0, sy: 0 }
+      const ts = 1.0
+      panState.current = { tx: 40 * (1 - ts), ty: vh / 2 - (by0 + by1) / 2 * ts, scale: ts, isPan: false, sx: 0, sy: 0 }
       applyTransform()
     }
-  }, [career, onNodeSelect, onHighlightPath])
+  }, [career, progress, onNodeSelect, onHighlightPath])
 
   useEffect(() => { render() }, [render])
 
