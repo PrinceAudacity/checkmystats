@@ -1,7 +1,23 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { nById, leadsTo, buildFullPath, layoutCareerDAG } from '../utils/graph'
+import useAuth from './useAuth'
+import { fetchUserCareerPaths, insertCareerPath, deleteCareerPath } from '../services/dataService'
+
+function buildCareerObj(specId) {
+  const n = nById[specId]
+  if (!n) return null
+  const { nodeSet, edgeSet } = buildFullPath(specId)
+  ;(leadsTo[specId] || []).forEach(cid => {
+    if (nById[cid]?.tier === 3) { nodeSet.add(cid); edgeSet.add(specId + '→' + cid) }
+  })
+  const positions = layoutCareerDAG(specId, nodeSet, edgeSet)
+  return { id: specId, name: n.name, cat: n.cat, nodeSet, edgeSet, positions }
+}
 
 export default function useAppState() {
+  const { session } = useAuth()
+  const userId = session?.user?.id
+
   const [addedCareers, setAddedCareers] = useState([])
   const [activeCareer, setActiveCareer] = useState(null)
   const [sidebarMode, setSidebarMode] = useState('map')
@@ -9,6 +25,17 @@ export default function useAppState() {
   const [selNode, setSelNode] = useState(null)
   const [activePath, setActivePath] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
+
+  useEffect(() => {
+    if (!userId) return
+    fetchUserCareerPaths(userId).then(ids => {
+      setAddedCareers(prev => {
+        const existingIds = new Set(prev.map(c => c.id))
+        const loaded = ids.map(buildCareerObj).filter(c => c && !existingIds.has(c.id))
+        return loaded.length ? [...prev, ...loaded] : prev
+      })
+    })
+  }, [userId])
 
   const highlightPath = useCallback((id) => {
     const path = buildFullPath(id)
@@ -21,20 +48,11 @@ export default function useAppState() {
   }, [])
 
   const addCareer = useCallback((specId) => {
-    const n = nById[specId]
-    if (!n) return
-    const { nodeSet, edgeSet } = buildFullPath(specId)
-    // Include tier-3 career outcomes from this specialization
-    ;(leadsTo[specId] || []).forEach(cid => {
-      if (nById[cid]?.tier === 3) {
-        nodeSet.add(cid)
-        edgeSet.add(specId + '→' + cid)
-      }
-    })
-    const positions = layoutCareerDAG(specId, nodeSet, edgeSet)
+    const career = buildCareerObj(specId)
+    if (!career) return
     setAddedCareers(prev => {
       if (prev.find(c => c.id === specId)) return prev
-      return [...prev, { id: specId, name: n.name, cat: n.cat, nodeSet, edgeSet, positions }]
+      return [...prev, career]
     })
     setModalOpen(false)
     setSidebarMode('careers')
@@ -42,12 +60,14 @@ export default function useAppState() {
     setActiveCatFilter(null)
     setActivePath(null)
     setSelNode(null)
-  }, [])
+    if (userId) insertCareerPath(userId, specId)
+  }, [userId])
 
   const removeCareer = useCallback((specId) => {
     setAddedCareers(prev => prev.filter(c => c.id !== specId))
     setActiveCareer(prev => prev === specId ? null : prev)
-  }, [])
+    if (userId) deleteCareerPath(userId, specId)
+  }, [userId])
 
   const selectCareer = useCallback((specId) => {
     setActiveCareer(specId)

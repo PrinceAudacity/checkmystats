@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { CAT_COLOR, CAT_NAMES, TIER_LABEL } from '../data/skillData'
 import { nById, leadsTo, prereqOf, buildFullPath, layoutCareerDAG } from '../utils/graph'
 import '../styles/dashboard.css'
+import useAuth from '../hooks/useAuth'
+import { fetchUserSkillStatuses, upsertSkillStatus } from '../services/dataService'
 
 // Build a career object from a spec node id (same logic as useAppState.addCareer)
 function buildCareer(specId) {
@@ -81,10 +83,27 @@ export default function CareerDashboard() {
   const navigate = useNavigate()
   const career = useMemo(() => buildCareer(id), [id])
 
+  const { session } = useAuth()
+  const userId = session?.user?.id
+
   const [progress, setProgress]     = useState(() => loadProgress(id))
   const [viewMode, setViewMode]     = useState('phases')
   const [activePhase, setActivePhase] = useState(null)
 
+  // Load from Supabase and merge (remote wins)
+  useEffect(() => {
+    if (!userId) return
+    fetchUserSkillStatuses(userId).then(remote => {
+      if (!Object.keys(remote).length) return
+      setProgress(prev => {
+        const merged = { ...prev, ...remote }
+        saveProgress(id, merged)
+        return merged
+      })
+    })
+  }, [id, userId])
+
+  // Keep localStorage in sync
   useEffect(() => { saveProgress(id, progress) }, [id, progress])
 
   if (!career) return (
@@ -99,9 +118,11 @@ export default function CareerDashboard() {
 
   const getStatus = useCallback((id) => progress[id] || 'notstarted', [progress])
 
-  function cycleStatus(id) {
+  function cycleStatus(nodeId) {
     const next = { notstarted: 'inprogress', inprogress: 'mastered', mastered: 'notstarted' }
-    setProgress(p => ({ ...p, [id]: next[p[id] || 'notstarted'] }))
+    const nextStatus = next[getStatus(nodeId)]
+    setProgress(p => ({ ...p, [nodeId]: nextStatus }))
+    if (userId) upsertSkillStatus(userId, nodeId, nextStatus)
   }
 
   function isUnlocked(id) {
