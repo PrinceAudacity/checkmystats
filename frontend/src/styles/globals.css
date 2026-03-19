@@ -59,9 +59,10 @@ body {
 #root {
   display: grid;
   height: 100vh;
-  grid-template-columns: 56px 240px 1fr 300px;
+  grid-template-columns: 56px 240px 1fr var(--panel-w, 300px);
   grid-template-rows: 48px 1fr;
   grid-template-areas: "nav nav nav nav" "toolbar sidebar canvas panel";
+  transition: grid-template-columns .2s ease;
 }
 
 .label-caps {
@@ -96,6 +97,16 @@ body {
   box-shadow: 0 0 0 1px var(--accent-blue), 0 0 20px rgba(58,123,255,.2) !important;
 }
 body.light .career-node.cn-tier0 { opacity: .55; }
+
+/* Planner button on tier-2 cards */
+.cn-planner-btn {
+  position: absolute; bottom: 6px; right: 8px;
+  padding: 2px 8px; border-radius: 3px;
+  border: 1px solid var(--border-blue); background: var(--accent-blue-dim);
+  color: var(--accent-blue); font-size: 10px; cursor: pointer;
+  font-family: var(--font); opacity: 0; transition: opacity .15s;
+}
+.career-node:hover .cn-planner-btn { opacity: 1; }
 
 .career-edge { fill: none; stroke: rgba(255,255,255,.08); stroke-width: 1.5; transition: stroke .3s, stroke-width .3s; }
 .career-edge.ce-hl { stroke: var(--accent-blue); stroke-width: 2; filter: drop-shadow(0 0 4px var(--accent-blue-glow)); }

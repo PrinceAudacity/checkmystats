@@ -23,3 +23,16 @@ dist/
 .vscode/
 .idea/
 *.swp
+
+# HTML scratch files
+*.html
+
+# Environment files
+.env.*
+!.env.example
+
+# Frontend build output
+frontend/dist/
+
+# Pytest cache
+.pytest_cache/

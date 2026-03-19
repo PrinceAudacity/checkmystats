@@ -1,7 +1,9 @@
-import React, { useRef } from 'react'
+import React, { useRef, useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import useAppState from './hooks/useAppState'
 import useTheme from './hooks/useTheme'
 import useCanvasView from './hooks/useCanvasView'
+import useSkillData from './hooks/useSkillData'
 import { NODE_POSITIONS } from './utils/layout'
 import { SKILL_NODES, CAT_NAMES } from './data/skillData'
 
@@ -19,9 +21,13 @@ import AddCareerModal from './components/AddCareerModal'
 export default function App() {
   const wrapRef = useRef(null)
   const canvasRef = useRef(null)
+  const navigate = useNavigate()
 
   const { theme, toggleTheme } = useTheme()
   const { vTx, vTy, vScale, zlblRef, resetView, zoomBy, animateTo } = useCanvasView(wrapRef)
+  const { loading: dataLoading } = useSkillData()
+
+  const [panelOpen, setPanelOpen] = useState(false)
 
   const {
     addedCareers, activeCareer, sidebarMode, activeCatFilter,
@@ -30,10 +36,18 @@ export default function App() {
     backToFullMap, filterCat, switchMode
   } = useAppState()
 
+  // Sync panel column width with panelOpen state
+  useEffect(() => {
+    document.documentElement.style.setProperty('--panel-w', panelOpen ? '300px' : '0px')
+  }, [panelOpen])
+
+  function openDashboard(career) { navigate('/career/' + career.id) }
+
   const activeCareerData = addedCareers.find(c => c.id === activeCareer) || null
 
   function handleNodeClick(node) {
     setSelNode(node)
+    setPanelOpen(true)
     highlightPath(node.id)
     const p = NODE_POSITIONS[node.id]
     if (p) {
@@ -44,6 +58,7 @@ export default function App() {
 
   function handleNodeSelect(node) {
     setSelNode(node)
+    setPanelOpen(true)
     highlightPath(node.id)
     if (activeCareer) return
     const p = NODE_POSITIONS[node.id]
@@ -82,6 +97,18 @@ export default function App() {
     breadcrumb = <><span>Career Path</span><span style={{ color: 'var(--accent-amber)', fontWeight: 500, marginLeft: 8 }}>{activeCareerData.name}</span></>
   } else if (activeCatFilter) {
     breadcrumb = <><span>Passive Skill Tree</span><span style={{ color: 'var(--accent-amber)', fontWeight: 500, marginLeft: 8 }}>{CAT_NAMES[activeCatFilter]}</span></>
+  }
+
+  if (dataLoading) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100vh', color: 'var(--text-dim)', fontSize: 13, fontFamily: 'var(--font)',
+        background: 'var(--bg-canvas)'
+      }}>
+        Loading skill data…
+      </div>
+    )
   }
 
   return (
@@ -145,8 +172,9 @@ export default function App() {
           <CareerView
             career={activeCareerData}
             zlblRef={zlblRef}
-            onNodeSelect={node => { setSelNode(node) }}
+            onNodeSelect={node => { setSelNode(node); setPanelOpen(true) }}
             onHighlightPath={path => setActivePath(path)}
+            onOpenDashboard={openDashboard}
           />
         )}
 
@@ -161,9 +189,13 @@ export default function App() {
 
       <NodeDetail
         node={selNode}
+        panelOpen={panelOpen}
+        addedCareers={addedCareers}
         onNodeSelect={handleNodeSelect}
         onTraceNode={id => { highlightPath(id) }}
         onClearPath={clearPath}
+        onOpenDashboard={openDashboard}
+        onClosePanel={() => setPanelOpen(false)}
       />
 
       <AddCareerModal
@@ -172,6 +204,7 @@ export default function App() {
         onAdd={addCareer}
         onClose={() => setModalOpen(false)}
       />
+
     </>
   )
 }

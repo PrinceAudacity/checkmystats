@@ -4,7 +4,7 @@ import { nById, buildFullPath } from '../utils/graph'
 
 const CARD_W = 160, CARD_H = 58
 
-export default function CareerView({ career, zlblRef, onNodeSelect, onHighlightPath }) {
+export default function CareerView({ career, zlblRef, onNodeSelect, onHighlightPath, onOpenDashboard }) {
   const viewRef = useRef(null)
   const panRef = useRef(null)
   const edgesRef = useRef(null)
@@ -79,6 +79,16 @@ export default function CareerView({ career, zlblRef, onNodeSelect, onHighlightP
           <span class="cn-status" style="color:${col}">${statusLbl}</span>
           ${n.hrs ? `<span>${n.hrs}h</span>` : ''}
         </div>`
+      if (n.tier === 2 && onOpenDashboard) {
+        const btn = document.createElement('button')
+        btn.className = 'cn-planner-btn'
+        btn.textContent = '→ Planner'
+        btn.addEventListener('click', e => {
+          e.stopPropagation()
+          onOpenDashboard({ id: id })
+        })
+        card.appendChild(btn)
+      }
       card.addEventListener('click', () => {
         nodesRef.current.querySelectorAll('.cn-selected').forEach(el => el.classList.remove('cn-selected'))
         card.classList.add('cn-selected')
@@ -157,6 +167,21 @@ export default function CareerView({ career, zlblRef, onNodeSelect, onHighlightP
         <svg ref={edgesRef} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', overflow: 'visible' }} />
         <div ref={nodesRef} />
       </div>
+      {onOpenDashboard && (
+        <button
+          onClick={() => onOpenDashboard(career)}
+          style={{
+            position: 'absolute', top: 12, right: 12, zIndex: 10,
+            background: 'var(--bg-panel)', border: '1px solid var(--border-light)',
+            color: 'var(--text-main)', fontSize: 12, padding: '7px 14px',
+            borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontFamily: 'var(--font)',
+            display: 'flex', alignItems: 'center', gap: 6,
+            boxShadow: '0 2px 8px rgba(0,0,0,.3)'
+          }}
+        >
+          📊 Path Planner
+        </button>
+      )}
     </div>
   )
 }
