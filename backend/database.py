@@ -1,23 +1,22 @@
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+import sys
+from supabase import create_client, Client
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./pathfinder.db")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv(
+    "SUPABASE_SERVICE_ROLE_KEY",
+    os.getenv("SUPABASE_ANON_KEY"),
+)
 
-# SQLite needs this connect_args, PostgreSQL does not
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("Error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_ANON_KEY) must be set.", file=sys.stderr)
+    sys.exit(1)
 
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
+def get_supabase() -> Client:
+    return supabase

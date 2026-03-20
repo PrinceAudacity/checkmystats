@@ -1,0 +1,17 @@
+INSERT INTO categories (code, name, color, sort_order) VALUES
+  ('MATH', 'Mathematics',    '#5577ee', 1),
+  ('SCI',  'Science',        '#44bb88', 2),
+  ('CS',   'Computing',      '#ee8833', 3),
+  ('ENG',  'Eng Tools',      '#8899bb', 4),
+  ('ME',   'Mechanical',     '#3399ff', 5),
+  ('EE',   'Electrical',     '#ffcc33', 6),
+  ('CE',   'Civil',          '#55cc77', 7),
+  ('CHE',  'Chemical',       '#ff5555', 8),
+  ('AERO', 'Aerospace',      '#9966ff', 9),
+  ('BME',  'Biomedical',     '#ff55aa', 10),
+  ('ENVE', 'Environmental',  '#44ccaa', 11),
+  ('IE',   'Industrial',     '#ff9944', 12),
+  ('MAT',  'Materials',      '#99cc44', 13),
+  ('NUKE', 'Nuclear',        '#ffaa44', 14),
+  ('ROB',  'Robotics',       '#44bbff', 15),
+  ('CRED', 'Credentials',    '#c8a84b', 16);
