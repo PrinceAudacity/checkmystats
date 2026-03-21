@@ -41,3 +41,6 @@ backend-spec.md
 .claude/
 
 docs/
+
+# Git worktrees
+.worktrees/
