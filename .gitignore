@@ -38,3 +38,4 @@ frontend/dist/
 .pytest_cache/
 
 backend-spec.md
+.claude/
