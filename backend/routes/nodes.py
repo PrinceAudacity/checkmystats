@@ -25,12 +25,13 @@ def get_all_nodes(sb: Client = Depends(get_supabase)):
     node_summaries = [
         SkillNodeSummary(
             id=n["id"],
-            name=n["name"],
+            display_name=n["name"],
             tier=n["tier"],
-            cat=n["cat"],
+            subject_category=n["cat"],
             hrs=n.get("hrs"),
             asmt_count=n.get("asmt_count", 0),
             edu_level=n.get("edu_level"),
+            degree_level=n.get("degree_level"),
             summary=n.get("summary"),
             mastery=n.get("mastery"),
             prerequisite_ids=prereq_map.get(n["id"], []),
@@ -71,12 +72,13 @@ def get_node(node_id: str, sb: Client = Depends(get_supabase)):
 
     return SkillNodeSummary(
         id=node["id"],
-        name=node["name"],
+        display_name=node["name"],
         tier=node["tier"],
-        cat=node["cat"],
+        subject_category=node["cat"],
         hrs=node.get("hrs"),
         asmt_count=node.get("asmt_count", 0),
         edu_level=node.get("edu_level"),
+        degree_level=node.get("degree_level"),
         summary=node.get("summary"),
         mastery=node.get("mastery"),
         prerequisite_ids=prereq_ids,

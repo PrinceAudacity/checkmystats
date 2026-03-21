@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { SKILL_NODES, CAT_COLOR, CAT_NAMES, TIER_LABEL } from '../data/skillData'
+import { TIER_LABEL } from '../utils/constants'
 
 const CATS = 'MATH SCI CS ENG ME EE CE CHE AERO BME ENVE IE MAT NUKE ROB CRED'.split(' ')
 
@@ -17,6 +17,7 @@ function hlQ(text, q) {
 
 export default function Sidebar({
   sidebarMode, activeCatFilter, activeCareer, addedCareers,
+  nodes, catColorMap, catNameMap,
   onSwitchMode, onFilterCat, onSelectCareer, onRemoveCareer, onBackToFullMap,
   onNodeSelect
 }) {
@@ -29,12 +30,11 @@ export default function Sidebar({
   useEffect(() => {
     if (!query.trim()) { setResults([]); setDdOpen(false); return }
     const q = query.trim().toLowerCase()
-    const pool = SKILL_NODES
-    const m = pool.filter(n => n.name.toLowerCase().includes(q)).slice(0, 10)
+    const m = nodes.filter(n => n.display_name.toLowerCase().includes(q)).slice(0, 10)
     setResults(m)
     setSelIdx(0)
     setDdOpen(m.length > 0 || true)
-  }, [query])
+  }, [query, nodes])
 
   function pickResult(node) {
     setQuery('')
@@ -90,9 +90,9 @@ export default function Sidebar({
                   className={`search-result-item${i === selIdx ? ' hi' : ''}`}
                   onMouseDown={e => { e.preventDefault(); pickResult(n) }}
                 >
-                  <div className="search-result-name">{hlQ(n.name, query.trim().toLowerCase())}</div>
+                  <div className="search-result-name">{hlQ(n.display_name, query.trim().toLowerCase())}</div>
                   <div className="search-result-meta">
-                    <span>{CAT_NAMES[n.cat] || ''}</span>
+                    <span>{catNameMap[n.subject_category] || ''}</span>
                     <span>{TIER_LABEL[n.tier]}</span>
                   </div>
                 </div>
@@ -132,7 +132,7 @@ export default function Sidebar({
             >
               <div className="cat-dot" style={{ background: 'linear-gradient(135deg,var(--accent-blue),var(--accent-violet))' }} />
               <span className="li-name">All Skills</span>
-              <span className="li-count">{SKILL_NODES.length}</span>
+              <span className="li-count">{nodes.length}</span>
             </div>
             <div className="list-group-label">Categories</div>
             {CATS.map(cat => (
@@ -141,9 +141,9 @@ export default function Sidebar({
                 className={`list-item${activeCatFilter === cat ? ' active' : ''}`}
                 onClick={() => onFilterCat(cat)}
               >
-                <div className="cat-dot" style={{ background: CAT_COLOR[cat] }} />
-                <span className="li-name">{CAT_NAMES[cat]}</span>
-                <span className="li-count">{SKILL_NODES.filter(n => n.cat === cat).length}</span>
+                <div className="cat-dot" style={{ background: catColorMap[cat] }} />
+                <span className="li-name">{catNameMap[cat]}</span>
+                <span className="li-count">{nodes.filter(n => n.subject_category === cat).length}</span>
               </div>
             ))}
           </>
@@ -155,7 +155,7 @@ export default function Sidebar({
             >
               <div className="cat-dot" style={{ background: 'linear-gradient(135deg,var(--accent-blue),var(--accent-violet))' }} />
               <span className="li-name">Full Map</span>
-              <span className="li-count">{SKILL_NODES.length}</span>
+              <span className="li-count">{nodes.length}</span>
             </div>
             {addedCareers.length > 0 ? (
               <>
@@ -166,7 +166,7 @@ export default function Sidebar({
                     className={`list-item${activeCareer === c.id ? ' active' : ''}`}
                     onClick={() => onSelectCareer(c.id)}
                   >
-                    <div className="cat-dot" style={{ background: CAT_COLOR[c.cat] }} />
+                    <div className="cat-dot" style={{ background: catColorMap[c.cat] }} />
                     <span className="li-name">{c.name}</span>
                     <span className="li-count">{c.nodeSet.size}</span>
                     <span

@@ -1,55 +1,68 @@
-import { SKILL_NODES, EDGES } from '../data/skillData'
+// frontend/src/utils/graph.js
+// Pure graph utility functions — no module-level singletons.
+// All functions accept nodeMap and/or edges as first parameters.
 
-export function buildGraphMaps() {
-  const nById = {}
+/**
+ * Build lookup maps from raw nodes and edges arrays.
+ * @param {Array} nodes - array of node objects with .id
+ * @param {Array} edges - array of {source, target} objects
+ * @returns {{ nodeMap, prereqOf, leadsTo }}
+ */
+export function buildGraphMaps(nodes, edges) {
+  const nodeMap = {}
   const prereqOf = {}
   const leadsTo = {}
-  SKILL_NODES.forEach(n => {
-    nById[n.id] = n
+  nodes.forEach(n => {
+    nodeMap[n.id] = n
     prereqOf[n.id] = []
     leadsTo[n.id] = []
   })
-  EDGES.forEach(([a, b]) => {
-    if (nById[a] && nById[b]) {
-      leadsTo[a].push(b)
-      prereqOf[b].push(a)
+  edges.forEach(({ source, target }) => {
+    if (nodeMap[source] && nodeMap[target]) {
+      leadsTo[source].push(target)
+      prereqOf[target].push(source)
     }
   })
-  return { nById, prereqOf, leadsTo }
+  return { nodeMap, prereqOf, leadsTo }
 }
 
-const { nById, prereqOf, leadsTo } = buildGraphMaps()
-export { nById, prereqOf, leadsTo }
-
-export function buildFullPath(sid) {
-  const n = nById[sid]
+/**
+ * Build the full prerequisite path from a target node back to foundations.
+ * @param {Object} nodeMap - id → node
+ * @param {Object} prereqOf - id → [prerequisite ids]
+ * @param {Object} leadsTo  - id → [unlock ids]
+ * @param {string} sid      - starting node id
+ * @returns {{ nodeSet: Set, edgeSet: Set }}
+ */
+export function buildFullPath(nodeMap, prereqOf, leadsTo, sid) {
+  const n = nodeMap[sid]
   if (!n) return { nodeSet: new Set([sid]), edgeSet: new Set() }
   const ns = new Set(), es = new Set()
   ns.add(sid)
-  const dc = n.cat
+  const dc = n.subject_category
   const q = [sid], vis = new Set([sid])
   while (q.length) {
     const cur = q.shift()
-    const cn = nById[cur]
+    const cn = nodeMap[cur]
     if (!cn) continue
     let acc = []
     if (cn.tier === 3)
       acc = (prereqOf[cur] || []).filter(p => {
-        const pn = nById[p]
-        return pn && (pn.tier === 2 ? pn.cat === dc : pn.cat === dc || 'MATH CS ENG'.includes(pn.cat))
+        const pn = nodeMap[p]
+        return pn && (pn.tier === 2 ? pn.subject_category === dc : pn.subject_category === dc || 'MATH CS ENG'.includes(pn.subject_category))
       })
     else if (cn.tier === 2)
       acc = (prereqOf[cur] || []).filter(p => {
-        const pn = nById[p]
-        return pn && (pn.cat === cn.cat || 'MATH CS ENG'.includes(pn.cat))
+        const pn = nodeMap[p]
+        return pn && (pn.subject_category === cn.subject_category || 'MATH CS ENG'.includes(pn.subject_category))
       })
     else if (cn.tier === 1)
       acc = (prereqOf[cur] || []).filter(p => {
-        const pn = nById[p]
-        return pn && (pn.tier === 0 || pn.cat === dc || 'MATH CS ENG'.includes(pn.cat))
+        const pn = nodeMap[p]
+        return pn && (pn.tier === 0 || pn.subject_category === dc || 'MATH CS ENG'.includes(pn.subject_category))
       })
     else
-      acc = (prereqOf[cur] || []).filter(p => nById[p]?.tier === 0)
+      acc = (prereqOf[cur] || []).filter(p => nodeMap[p]?.tier === 0)
     for (const pid of acc) {
       es.add(pid + '→' + cur)
       ns.add(pid)
@@ -59,7 +72,15 @@ export function buildFullPath(sid) {
   return { nodeSet: ns, edgeSet: es }
 }
 
-export function layoutCareerDAG(specId, nodeSet, edgeSet) {
+/**
+ * Layout nodes of a career DAG into a column-based grid.
+ * @param {Object} nodeMap - id → node
+ * @param {string} specId  - root career node id
+ * @param {Set}    nodeSet - set of node ids to lay out
+ * @param {Set}    edgeSet - set of "from→to" edge strings
+ * @returns {Object} id → { x, y }
+ */
+export function layoutCareerDAG(nodeMap, specId, nodeSet, edgeSet) {
   const pos = {}
   const ids = [...nodeSet]
   const depth = {}
@@ -84,9 +105,10 @@ export function layoutCareerDAG(specId, nodeSet, edgeSet) {
   const colKeys = Object.keys(cols).map(Number).sort((a, b) => a - b)
   colKeys.forEach(c => {
     cols[c].sort((a, b) => {
-      const na = nById[a], nb = nById[b]
-      if (na.cat !== nb.cat) return na.cat < nb.cat ? -1 : 1
-      return na.name < nb.name ? -1 : 1
+      const na = nodeMap[a], nb = nodeMap[b]
+      if (!na || !nb) return 0
+      if (na.subject_category !== nb.subject_category) return na.subject_category < nb.subject_category ? -1 : 1
+      return na.display_name < nb.display_name ? -1 : 1
     })
   })
   const CARD_W = 160, CARD_H = 58, COL_GAP = 90, ROW_GAP = 22

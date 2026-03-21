@@ -1,5 +1,5 @@
 import { useRef, useCallback } from 'react'
-import { NODE_POSITIONS, CANVAS_CENTER } from '../utils/layout'
+import { CANVAS_CENTER } from '../utils/layout'
 
 const { CX, CY } = CANVAS_CENTER
 
@@ -53,8 +53,8 @@ export default function useCanvasView(wrapRef) {
     updateZlbl()
   }
 
-  function panToNode(nodeId) {
-    const p = NODE_POSITIONS[nodeId]
+  function panToNode(nodeId, nodePositions) {
+    const p = nodePositions && nodePositions[nodeId]
     if (!p || !wrapRef.current) return
     const ts = Math.max(vScale.current, .5)
     animateTo(

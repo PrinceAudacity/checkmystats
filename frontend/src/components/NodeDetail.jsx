@@ -1,8 +1,7 @@
 import React from 'react'
-import { CAT_COLOR, CAT_NAMES, TIER_LABEL, EDU_LABELS } from '../data/skillData'
-import { prereqOf, leadsTo, nById } from '../utils/graph'
+import { TIER_LABEL, EDU_LABELS } from '../utils/constants'
 
-export default function NodeDetail({ node, panelOpen, addedCareers, onNodeSelect, onTraceNode, onClearPath, onOpenDashboard, onClosePanel }) {
+export default function NodeDetail({ node, panelOpen, addedCareers, nodeMap, prereqOf, leadsTo, catColorMap, catNameMap, onNodeSelect, onTraceNode, onClearPath, onOpenDashboard, onClosePanel }) {
   if (!panelOpen) return null
 
   if (!node) {
@@ -16,13 +15,13 @@ export default function NodeDetail({ node, panelOpen, addedCareers, onNodeSelect
     )
   }
 
-  const col = CAT_COLOR[node.cat] || '#888'
-  const catName = CAT_NAMES[node.cat] || node.cat
+  const col = catColorMap[node.subject_category] || '#888'
+  const catName = catNameMap[node.subject_category] || node.subject_category
   const tierLabel = TIER_LABEL[node.tier] || ''
   const eduLabel = node.edu ? EDU_LABELS[node.edu] : null
 
-  const pres = (prereqOf[node.id] || []).map(id => nById[id]).filter(Boolean)
-  const leads = (leadsTo[node.id] || []).map(id => nById[id]).filter(Boolean)
+  const pres = (prereqOf[node.id] || []).map(id => nodeMap[id]).filter(Boolean)
+  const leads = (leadsTo[node.id] || []).map(id => nodeMap[id]).filter(Boolean)
 
   const matchedCareer = addedCareers
     ? (node.tier === 2
@@ -30,70 +29,62 @@ export default function NodeDetail({ node, panelOpen, addedCareers, onNodeSelect
         : addedCareers.find(c => c.nodeSet && c.nodeSet.has(node.id)))
     : null
 
-  // Breadcrumb: category > tier
   const breadcrumb = `${catName} › ${tierLabel}`
 
   return (
     <aside style={panelStyle}>
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', position: 'relative' }}>
 
-        {/* Close button */}
         <button onClick={onClosePanel} style={closeBtn} title="Close panel">×</button>
 
-        {/* Header */}
         <div style={{ padding: '20px 18px 14px', borderBottom: '1px solid var(--border-light)' }}>
           <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-dim)', marginBottom: 5 }}>
             {breadcrumb}
           </div>
           <div style={{ fontSize: 18, fontWeight: 500, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, paddingRight: 20 }}>
             <div style={{ width: 10, height: 10, borderRadius: 3, flexShrink: 0, background: col }} />
-            {node.name}
+            {node.display_name}
           </div>
-          {/* Status pills */}
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
             <span className="pill-tag" style={{ borderColor: col + '44', color: col }}>{catName}</span>
             <span className="pill-tag">Tier {node.tier}</span>
             {eduLabel && <span className="pill-tag">{eduLabel}</span>}
-            {node.level && <span className="pill-tag">{node.level.toUpperCase()}</span>}
+            {node.degree_level && <span className="pill-tag">{node.degree_level.toUpperCase()}</span>}
           </div>
         </div>
 
-        {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-          {/* Stats grid */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <StatCell label="Tier" value={tierLabel} />
             <StatCell label="Hours" value={node.hrs ? node.hrs + 'h' : '—'} />
             <StatCell label="Category" value={catName} />
-            <StatCell label="Level" value={eduLabel || node.level?.toUpperCase() || '—'} />
+            <StatCell label="Level" value={eduLabel || node.degree_level?.toUpperCase() || '—'} />
           </div>
 
-          {/* Prerequisites */}
           {pres.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span className="label-caps">Prerequisites ({pres.length})</span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {pres.map(p => (
                   <div key={p.id} className="prereq-item" onClick={() => onNodeSelect(p)}>
-                    <div className="prereq-dot" style={{ background: CAT_COLOR[p.cat] || '#888' }} />
-                    {p.name}
+                    <div className="prereq-dot" style={{ background: catColorMap[p.subject_category] || '#888' }} />
+                    {p.display_name}
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Leads to */}
           {leads.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span className="label-caps">Leads to ({leads.length})</span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {leads.slice(0, 15).map(l => (
                   <div key={l.id} className="prereq-item" onClick={() => onNodeSelect(l)}>
-                    <div className="prereq-dot" style={{ background: CAT_COLOR[l.cat] || '#888' }} />
-                    {l.name}
-                    {l.level && <span style={{ color: 'var(--text-dim)', fontSize: 9, marginLeft: 'auto' }}>{l.level.toUpperCase()}</span>}
+                    <div className="prereq-dot" style={{ background: catColorMap[l.subject_category] || '#888' }} />
+                    {l.display_name}
+                    {l.degree_level && <span style={{ color: 'var(--text-dim)', fontSize: 9, marginLeft: 'auto' }}>{l.degree_level.toUpperCase()}</span>}
                   </div>
                 ))}
                 {leads.length > 15 && (
@@ -108,7 +99,6 @@ export default function NodeDetail({ node, panelOpen, addedCareers, onNodeSelect
           )}
         </div>
 
-        {/* Footer */}
         <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: 6 }}>
           {matchedCareer && onOpenDashboard && (
             <button

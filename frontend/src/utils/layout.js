@@ -1,5 +1,4 @@
-import { SKILL_NODES } from '../data/skillData'
-
+// frontend/src/utils/layout.js
 const CX = 2400, CY = 2400
 
 const DS = {
@@ -26,12 +25,18 @@ export const RINGS = [
 export const CANVAS_CENTER = { CX, CY }
 export { DS }
 
-function computePositions() {
+const T0_IDS = ['f_counting','f_addition','f_subtraction','f_multiplication','f_division','f_fractions','f_negative','f_ratios','f_percentages','f_algebra1','f_geometry','f_logic','f_stats_basic','f_sci_method','f_comp_basics','f_spreadsheets','f_algebra2','f_trig','f_precalc','f_calculus1','f_calculus2','f_physics_mech','f_physics_em','f_physics_waves','f_chem_general','f_bio_basic','f_tech_writing']
+
+/**
+ * Compute canvas positions for all nodes.
+ * @param {Array} nodes - array of node objects with { id, tier, subject_category, degree_level }
+ * @returns {Object} id → { x, y }
+ */
+export function computeNodePositions(nodes) {
   const fP = {}
 
-  // Tier 0 — foundation spiral
-  const t0Ids = ['f_counting','f_addition','f_subtraction','f_multiplication','f_division','f_fractions','f_negative','f_ratios','f_percentages','f_algebra1','f_geometry','f_logic','f_stats_basic','f_sci_method','f_comp_basics','f_spreadsheets','f_algebra2','f_trig','f_precalc','f_calculus1','f_calculus2','f_physics_mech','f_physics_em','f_physics_waves','f_chem_general','f_bio_basic','f_tech_writing']
-  t0Ids.forEach((id, i, arr) => {
+  // Tier 0 — foundation spiral (fixed order)
+  T0_IDS.forEach((id, i, arr) => {
     const t = i / (arr.length - 1)
     const r = 70 + t * 350
     const a = -Math.PI / 2 + t * Math.PI * 2 * 2.6
@@ -40,9 +45,9 @@ function computePositions() {
 
   // Tier 1 — domain ring
   const dg = {}
-  SKILL_NODES.filter(n => n.tier === 1).forEach(n => {
-    if (!dg[n.cat]) dg[n.cat] = []
-    dg[n.cat].push(n)
+  nodes.filter(n => n.tier === 1).forEach(n => {
+    if (!dg[n.subject_category]) dg[n.subject_category] = []
+    dg[n.subject_category].push(n)
   })
   Object.entries(dg).forEach(([c, ns]) => {
     const s = DS[c]
@@ -56,15 +61,15 @@ function computePositions() {
   })
 
   // Tier 2 — specialization ring
-  SKILL_NODES.filter(n => n.tier === 2).forEach(n => {
-    const s = DS[n.cat]
+  nodes.filter(n => n.tier === 2).forEach(n => {
+    const s = DS[n.subject_category]
     if (!s) { fP[n.id] = { x: CX, y: CY - R_SP }; return }
-    const d1 = SKILL_NODES.filter(x => x.tier === 1 && x.cat === n.cat)
+    const d1 = nodes.filter(x => x.tier === 1 && x.subject_category === n.subject_category)
     let ax = 0, ay = 0
     d1.forEach(x => { const p = fP[x.id]; if (p) { ax += p.x - CX; ay += p.y - CY } })
     const c = d1.length || 1
     const ca = Math.atan2(ay / c, ax / c)
-    const d2 = SKILL_NODES.filter(x => x.tier === 2 && x.cat === n.cat)
+    const d2 = nodes.filter(x => x.tier === 2 && x.subject_category === n.subject_category)
     const idx = d2.indexOf(n)
     const sp = (d2.length - 1) * .14
     fP[n.id] = {
@@ -73,10 +78,10 @@ function computePositions() {
     }
   })
 
-  // Tier 3 — career/cert outer rings
+  // Tier 3 — career/cert outer rings (bucketed by degree_level)
   const cg2 = {}
-  SKILL_NODES.filter(n => n.tier === 3).forEach(n => {
-    const k = n.cat + '-' + (n.level || 'bs')
+  nodes.filter(n => n.tier === 3).forEach(n => {
+    const k = n.subject_category + '-' + (n.degree_level || 'bs')
     if (!cg2[k]) cg2[k] = []
     cg2[k].push(n)
   })
@@ -97,5 +102,3 @@ function computePositions() {
 
   return fP
 }
-
-export const NODE_POSITIONS = computePositions()

@@ -1,10 +1,10 @@
 import React, { useRef, useEffect, useCallback } from 'react'
-import { CAT_COLOR, TIER_LABEL } from '../data/skillData'
-import { nById, buildFullPath } from '../utils/graph'
+import { TIER_LABEL } from '../utils/constants'
+import { buildFullPath } from '../utils/graph'
 
 const CARD_W = 160, CARD_H = 58
 
-export default function CareerView({ career, progress = {}, zlblRef, onNodeSelect, onHighlightPath, onOpenDashboard }) {
+export default function CareerView({ career, progress = {}, zlblRef, nodeMap, prereqOf, leadsTo, catColorMap, onNodeSelect, onHighlightPath, onOpenDashboard }) {
   const viewRef = useRef(null)
   const panRef = useRef(null)
   const edgesRef = useRef(null)
@@ -56,11 +56,11 @@ export default function CareerView({ career, progress = {}, zlblRef, onNodeSelec
 
     // Draw node cards
     ;[...nodeSet].forEach(id => {
-      const n = nById[id]
+      const n = nodeMap[id]
       if (!n) return
       const p = pos[id]
       if (!p) return
-      const col = CAT_COLOR[n.cat] || '#888'
+      const col = catColorMap[n.subject_category] || '#888'
       const tierCls = n.tier === 0 ? 'cn-tier0' : n.tier === 2 ? 'cn-tier2' : n.tier === 3 ? 'cn-tier3' : ''
       const st = getStatus(id)
       const stCls = st === 'mastered' ? 'cn-mastered' : st === 'inprogress' ? 'cn-inprogress' : 'cn-notstarted'
@@ -78,7 +78,7 @@ export default function CareerView({ career, progress = {}, zlblRef, onNodeSelec
       card.innerHTML = `
         <div class="cn-header">
           <div class="cn-dot" style="${dotStyle}"></div>
-          <div class="cn-title">${n.name}</div>
+          <div class="cn-title">${n.display_name}</div>
           ${stIcon ? `<div class="cn-st-icon" style="color:${stColor};font-size:11px;margin-left:auto;flex-shrink:0">${stIcon}</div>` : ''}
         </div>
         <div class="cn-meta">
@@ -99,7 +99,7 @@ export default function CareerView({ career, progress = {}, zlblRef, onNodeSelec
         nodesRef.current.querySelectorAll('.cn-selected').forEach(el => el.classList.remove('cn-selected'))
         card.classList.add('cn-selected')
         onNodeSelect(n)
-        const path = buildFullPath(id)
+        const path = buildFullPath(nodeMap, prereqOf, leadsTo, id)
         onHighlightPath(path)
         edgesRef.current.querySelectorAll('.career-edge').forEach(pe => {
           const key = pe.dataset.from + '→' + pe.dataset.to
@@ -118,7 +118,7 @@ export default function CareerView({ career, progress = {}, zlblRef, onNodeSelec
       panState.current = { tx: 40 * (1 - ts), ty: vh / 2 - (by0 + by1) / 2 * ts, scale: ts, isPan: false, sx: 0, sy: 0 }
       applyTransform()
     }
-  }, [career, progress, onNodeSelect, onHighlightPath])
+  }, [career, progress, nodeMap, prereqOf, leadsTo, catColorMap, onNodeSelect, onHighlightPath])
 
   useEffect(() => { render() }, [render])
 

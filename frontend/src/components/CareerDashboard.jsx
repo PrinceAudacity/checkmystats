@@ -1,59 +1,52 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { CAT_COLOR, CAT_NAMES, TIER_LABEL } from '../data/skillData'
-import { nById, leadsTo, prereqOf, buildFullPath, layoutCareerDAG } from '../utils/graph'
+import { TIER_LABEL } from '../utils/constants'
+import { buildFullPath, layoutCareerDAG } from '../utils/graph'
 import '../styles/dashboard.css'
-import useAuth from '../hooks/useAuth'
-import { fetchUserSkillStatuses, upsertSkillStatus } from '../services/dataService'
-import NavActions from './NavActions'
+import useGraph from '../hooks/useGraph'
+import useSkillStatus from '../hooks/useSkillStatus'
 
-// Build a career object from a spec node id (same logic as useAppState.addCareer)
-function buildCareer(specId) {
-  const n = nById[specId]
+// Build a career object from a spec node id
+function buildCareer(specId, nodeMap, prereqOf, leadsTo) {
+  const n = nodeMap[specId]
   if (!n) return null
-  const { nodeSet, edgeSet } = buildFullPath(specId)
+  const { nodeSet, edgeSet } = buildFullPath(nodeMap, prereqOf, leadsTo, specId)
   ;(leadsTo[specId] || []).forEach(cid => {
-    if (nById[cid]?.tier === 3) {
+    if (nodeMap[cid]?.tier === 3) {
       nodeSet.add(cid)
       edgeSet.add(specId + '→' + cid)
     }
   })
-  const positions = layoutCareerDAG(specId, nodeSet, edgeSet)
-  return { id: specId, name: n.name, cat: n.cat, nodeSet, edgeSet, positions }
+  const positions = layoutCareerDAG(nodeMap, specId, nodeSet, edgeSet)
+  return { id: specId, name: n.display_name, cat: n.subject_category, nodeSet, edgeSet, positions }
 }
 
-// ── Derive phases from nodes grouped by tier ────────────────────────────────
-function buildPhases(career) {
+// Derive phases from nodes grouped by tier
+function buildPhases(career, nodeMap) {
   const byTier = { 0: [], 1: [], 2: [], 3: [] }
   for (const id of career.nodeSet) {
-    const n = nById[id]
+    const n = nodeMap[id]
     if (n && byTier[n.tier] !== undefined) byTier[n.tier].push(id)
   }
   return [
-    { id: 'p0', name: 'Phase 1 — Foundation',        color: '#5577ee', desc: 'Elementary through high school mathematics and science.',              nodes: byTier[0] },
-    { id: 'p1', name: 'Phase 2 — Advanced Skills',    color: '#7799cc', desc: 'University-level technical courses in your discipline.',              nodes: byTier[1] },
-    { id: 'p2', name: 'Phase 3 — Specialization',     color: '#aa66ee', desc: 'Degree-level mastery across your chosen engineering discipline.',     nodes: byTier[2] },
-    { id: 'p3', name: 'Phase 4 — Career & Credentials', color: '#c8a84b', desc: 'Credentials and career outcomes this specialization unlocks.',    nodes: byTier[3] },
+    { id: 'p0', name: 'Phase 1 — Foundation',           color: '#5577ee', desc: 'Elementary through high school mathematics and science.',          nodes: byTier[0] },
+    { id: 'p1', name: 'Phase 2 — Advanced Skills',       color: '#7799cc', desc: 'University-level technical courses in your discipline.',          nodes: byTier[1] },
+    { id: 'p2', name: 'Phase 3 — Specialization',        color: '#aa66ee', desc: 'Degree-level mastery across your chosen engineering discipline.', nodes: byTier[2] },
+    { id: 'p3', name: 'Phase 4 — Career & Credentials',  color: '#c8a84b', desc: 'Credentials and career outcomes this specialization unlocks.',   nodes: byTier[3] },
   ].filter(p => p.nodes.length > 0)
 }
 
-// ── Compute critical path (longest-chain through DAG) ────────────────────────
+// Compute critical path (longest-chain through DAG)
 function computeCriticalPath(career) {
   const { nodeSet, edgeSet } = career
   const edges = [...edgeSet].map(e => e.split('→')).filter(([a, b]) => nodeSet.has(a) && nodeSet.has(b))
   const ids = [...nodeSet]
-
-  // Find target: the specialization node (tier 2) — the one whose id matches career.id
   const target = career.id
-
-  // Longest distance from any root to each node (relax repeatedly)
   const dist = {}
   ids.forEach(id => (dist[id] = 0))
   for (let i = 0; i < ids.length; i++) {
     edges.forEach(([a, b]) => { if (dist[a] + 1 > dist[b]) dist[b] = dist[a] + 1 })
   }
-
-  // Trace back from target following highest-dist predecessors
   const path = [target]
   let cur = target
   const visited = new Set([target])
@@ -68,74 +61,41 @@ function computeCriticalPath(career) {
   return path
 }
 
-// ── Progress storage key per career ─────────────────────────────────────────
-function storageKey(careerId) { return 'cms_progress_' + careerId }
-
-function loadProgress(careerId) {
-  try { return JSON.parse(localStorage.getItem(storageKey(careerId))) || {} } catch { return {} }
-}
-function saveProgress(careerId, p) {
-  try { localStorage.setItem(storageKey(careerId), JSON.stringify(p)) } catch {}
-}
-
-// ── Main component ────────────────────────────────────────────────────────────
 export default function CareerDashboard() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const career = useMemo(() => buildCareer(id), [id])
 
-  const { session } = useAuth()
-  const userId = session?.user?.id
+  const { nodeMap, prereqOf, leadsTo, catColorMap, catNameMap, loading: graphLoading, error: graphError } = useGraph()
+  const { statuses, updateStatus } = useSkillStatus()
 
-  const [progress, setProgress]     = useState(() => loadProgress(id))
-  const [viewMode, setViewMode]     = useState('phases')
+  const career = useMemo(() => {
+    if (!nodeMap || Object.keys(nodeMap).length === 0) return null
+    return buildCareer(id, nodeMap, prereqOf, leadsTo)
+  }, [id, nodeMap, prereqOf, leadsTo])
+
+  const [viewMode, setViewMode]       = useState('phases')
   const [activePhase, setActivePhase] = useState(null)
   const [openPhases, setOpenPhases]   = useState(() => new Set(['p0', 'p1', 'p2', 'p3']))
-  const [skipModal, setSkipModal]     = useState(null) // { nodeId, prereqs }
+  const [skipModal, setSkipModal]     = useState(null)
 
-  // Load from Supabase and merge (remote wins)
-  useEffect(() => {
-    if (!userId) return
-    fetchUserSkillStatuses(userId).then(remote => {
-      if (!Object.keys(remote).length) return
-      setProgress(prev => {
-        const merged = { ...prev, ...remote }
-        saveProgress(id, merged)
-        return merged
-      })
-    })
-  }, [id, userId])
-
-  // Keep localStorage in sync
-  useEffect(() => { saveProgress(id, progress) }, [id, progress])
-
-  if (!career) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-dim)', fontFamily: 'var(--font)', fontSize: 14 }}>
-      Career not found: {id}
-      <button onClick={() => navigate('/app')} style={{ marginLeft: 12, padding: '5px 12px', cursor: 'pointer' }}>← Back</button>
-    </div>
-  )
-
-  const phases      = useMemo(() => buildPhases(career),         [career])
-  const critPath    = useMemo(() => computeCriticalPath(career), [career])
-
-  const getStatus = useCallback((id) => progress[id] || 'notstarted', [progress])
+  const getStatus = useCallback((nodeId) => statuses[nodeId] || 'notstarted', [statuses])
 
   function cycleStatus(nodeId) {
     const next = { notstarted: 'inprogress', inprogress: 'mastered', mastered: 'notstarted' }
     const nextStatus = next[getStatus(nodeId)]
-    setProgress(p => ({ ...p, [nodeId]: nextStatus }))
-    if (userId) upsertSkillStatus(userId, nodeId, nextStatus)
+    updateStatus(nodeId, nextStatus)
   }
 
-  function isUnlocked(id) {
+  function isUnlocked(nodeId) {
+    if (!career) return false
     return [...career.edgeSet]
-      .filter(e => e.endsWith('→' + id))
+      .filter(e => e.endsWith('→' + nodeId))
       .map(e => e.split('→')[0])
       .every(p => getStatus(p) === 'mastered')
   }
 
   function getLockedPrereqs(targetId) {
+    if (!career) return []
     const result = new Set()
     const queue = [targetId]
     const visited = new Set([targetId])
@@ -157,50 +117,55 @@ export default function CareerDashboard() {
   }
 
   function skipToNode(nodeId, prereqs) {
-    const updates = {}
-    prereqs.forEach(pid => { updates[pid] = 'mastered' })
-    setProgress(p => ({ ...p, ...updates }))
-    if (userId) prereqs.forEach(pid => upsertSkillStatus(userId, pid, 'mastered'))
+    prereqs.forEach(pid => updateStatus(pid, 'mastered'))
     setSkipModal(null)
   }
 
-  // ── Stats ──────────────────────────────────────────────────────────────────
-  const stats = useMemo(() => {
+  if (graphLoading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-dim)', fontFamily: 'var(--font)', fontSize: 14 }}>
+      Loading…
+    </div>
+  )
+
+  if (graphError) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--accent-red)', fontFamily: 'var(--font)', fontSize: 14 }}>
+      Error loading data: {graphError}
+    </div>
+  )
+
+  if (!career) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-dim)', fontFamily: 'var(--font)', fontSize: 14 }}>
+      Career not found: {id}
+      <button onClick={() => navigate('/app')} style={{ marginLeft: 12, padding: '5px 12px', cursor: 'pointer' }}>← Back</button>
+    </div>
+  )
+
+  const phases   = buildPhases(career, nodeMap)
+  const critPath = computeCriticalPath(career)
+
+  const stats = (() => {
     const allIds = [...career.nodeSet]
     const total    = allIds.length
     const mastered = allIds.filter(id => getStatus(id) === 'mastered').length
     const inprog   = allIds.filter(id => getStatus(id) === 'inprogress').length
-    const totalHrs = allIds.reduce((s, id) => s + (nById[id]?.hrs || 0), 0)
-    const doneHrs  = allIds.filter(id => getStatus(id) === 'mastered').reduce((s, id) => s + (nById[id]?.hrs || 0), 0)
+    const totalHrs = allIds.reduce((s, id) => s + (nodeMap[id]?.hrs || 0), 0)
+    const doneHrs  = allIds.filter(id => getStatus(id) === 'mastered').reduce((s, id) => s + (nodeMap[id]?.hrs || 0), 0)
     const pct = total ? Math.round(mastered / total * 100) : 0
     return { total, mastered, inprog, totalHrs, doneHrs, remainHrs: totalHrs - doneHrs, pct }
-  }, [career, progress, getStatus])
+  })()
 
-  const allPathIds = useMemo(() => phases.flatMap(p => p.nodes), [phases])
-
-  const nextUp = useMemo(() =>
-    allPathIds.filter(id => getStatus(id) === 'notstarted' && isUnlocked(id)),
-    [allPathIds, progress]
-  )
-  const blockedCount = useMemo(() =>
-    allPathIds.filter(id => getStatus(id) === 'notstarted' && !isUnlocked(id)).length,
-    [allPathIds, progress]
-  )
-
-  const phaseHrs = useMemo(() =>
-    phases.map(p => p.nodes.reduce((s, id) => s + (nById[id]?.hrs || 0), 0)),
-    [phases]
-  )
+  const allPathIds = phases.flatMap(p => p.nodes)
+  const nextUp = allPathIds.filter(id => getStatus(id) === 'notstarted' && isUnlocked(id))
+  const blockedCount = allPathIds.filter(id => getStatus(id) === 'notstarted' && !isUnlocked(id)).length
+  const phaseHrs = phases.map(p => p.nodes.reduce((s, id) => s + (nodeMap[id]?.hrs || 0), 0))
   const totalH = phaseHrs.reduce((a, b) => a + b, 0) || 1
 
-  const careerNode = nById[career.id]
-  const catCol     = CAT_COLOR[career.cat] || '#888'
+  const careerNode = nodeMap[career.id]
+  const catCol     = catColorMap[career.cat] || '#888'
 
-  // ── Progress ring math ────────────────────────────────────────────────────
   const CIRC = 2 * Math.PI * 38
   const ringOffset = CIRC * (1 - stats.pct / 100)
 
-  // ── Status icon helpers ───────────────────────────────────────────────────
   function statusIcon(st) {
     if (st === 'mastered')   return '✓'
     if (st === 'inprogress') return '◑'
@@ -220,7 +185,7 @@ export default function CareerDashboard() {
       fontSize: 13,
     }}>
 
-      {/* ── Nav ── */}
+      {/* Nav */}
       <nav style={{
         gridArea: 'nav',
         position: 'sticky', top: 0, zIndex: 100,
@@ -242,18 +207,17 @@ export default function CareerDashboard() {
         </div>
         <div style={{ width: 1, height: 16, background: 'var(--border-light)' }} />
         <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>Path Planner →</span>
-        <span style={{ fontSize: 12, color: 'var(--gold)', fontWeight: 500 }}>{careerNode?.name || career.name}</span>
+        <span style={{ fontSize: 12, color: 'var(--gold)', fontWeight: 500 }}>{careerNode?.display_name || career.name}</span>
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
-            onClick={() => { if (confirm('Reset all progress for this career?')) setProgress({}) }}
+            onClick={() => { if (confirm('Reset all progress for this career?')) { [...career.nodeSet].forEach(nid => updateStatus(nid, 'notstarted')) } }}
             style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border-light)', background: 'transparent', color: 'var(--text-dim)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)' }}
           >Reset progress</button>
-          <NavActions />
         </div>
       </nav>
 
-      {/* ── Sidebar ── */}
+      {/* Sidebar */}
       <aside style={{
         gridArea: 'sidebar',
         background: 'var(--bg-panel-solid)',
@@ -344,7 +308,7 @@ export default function CareerDashboard() {
         </div>
       </aside>
 
-      {/* ── Main content ── */}
+      {/* Main content */}
       <main style={{ gridArea: 'main', padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
 
         {/* Career header */}
@@ -359,10 +323,10 @@ export default function CareerDashboard() {
           }}>⚙</div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 20, fontWeight: 600, marginBottom: 4, letterSpacing: '-.02em' }}>
-              {careerNode?.name || career.name}
+              {careerNode?.display_name || career.name}
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6 }}>
-              {CAT_NAMES[career.cat]} engineering path · {career.nodeSet.size} prerequisite nodes
+              {catNameMap[career.cat]} engineering path · {career.nodeSet.size} prerequisite nodes
             </div>
             <div style={{ display: 'flex', gap: 16, marginTop: 10 }}>
               {[
@@ -419,14 +383,14 @@ export default function CareerDashboard() {
               <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-dim)', marginBottom: 7 }}>Start with these next</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {nextUp.slice(0, 6).map(id => {
-                  const n = nById[id]
-                  const col = CAT_COLOR[n?.cat] || 'var(--text-dim)'
+                  const n = nodeMap[id]
+                  const col = catColorMap[n?.subject_category] || 'var(--text-dim)'
                   return (
                     <div key={id} onClick={() => cycleStatus(id)} style={{
                       padding: '5px 9px', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 500,
                       border: `1px solid ${col}44`, background: col + '18', color: col
                     }}>
-                      {n?.name}{n?.hrs ? <span style={{ opacity: .55 }}> {n.hrs}h</span> : ''}
+                      {n?.display_name}{n?.hrs ? <span style={{ opacity: .55 }}> {n.hrs}h</span> : ''}
                     </div>
                   )
                 })}
@@ -470,7 +434,7 @@ export default function CareerDashboard() {
           </div>
         </div>
 
-        {/* ── Phase blocks or Critical path ── */}
+        {/* Phase blocks or Critical path */}
         {viewMode === 'phases' ? (
           phases.map(phase => {
             const isOpen = openPhases.has(phase.id)
@@ -479,7 +443,6 @@ export default function CareerDashboard() {
             const phasePct = phase.nodes.length ? Math.round(doneCount / phase.nodes.length * 100) : 0
             return (
               <div key={phase.id} style={{ background: 'var(--bg-panel-solid)', border: '1px solid var(--border-light)', borderRadius: 10, overflow: 'hidden' }}>
-                {/* Phase header */}
                 <div
                   onClick={() => setOpenPhases(prev => { const s = new Set(prev); s.has(phase.id) ? s.delete(phase.id) : s.add(phase.id); return s })}
                   style={{
@@ -506,17 +469,16 @@ export default function CareerDashboard() {
                   </div>
                   <span style={{ color: 'var(--text-dim)', fontSize: 12, transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .2s' }}>▶</span>
                 </div>
-                {/* Node grid */}
                 {isOpen && (
                   <div style={{ padding: '16px 18px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 8 }}>
                       {phase.nodes.map(id => {
-                        const n = nById[id]
+                        const n = nodeMap[id]
                         if (!n) return null
                         const st = getStatus(id)
                         const unlocked = isUnlocked(id) || st !== 'notstarted'
                         const isTarget = id === career.id
-                        const col = CAT_COLOR[n.cat] || '#888'
+                        const col = catColorMap[n.subject_category] || '#888'
                         return (
                           <div key={id}
                             onClick={() => {
@@ -539,13 +501,13 @@ export default function CareerDashboard() {
                               position: 'relative', transition: 'all .15s'
                             }}
                           >
-                            <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 3, paddingRight: 20 }}>{n.name}</div>
+                            <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 3, paddingRight: 20 }}>{n.display_name}</div>
                             <div style={{ fontSize: 10, color: 'var(--text-dim)', display: 'flex', gap: 6, alignItems: 'center' }}>
                               <span style={{
                                 padding: '1px 5px', borderRadius: 3, fontSize: 9, fontWeight: 600,
                                 textTransform: 'uppercase', letterSpacing: '.04em',
                                 background: col + '22', color: col
-                              }}>{n.cat}</span>
+                              }}>{n.subject_category}</span>
                               {n.hrs > 0 && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-dim)' }}>{n.hrs}h</span>}
                               {!unlocked && st === 'notstarted' && <span style={{ color: '#e94560', fontSize: 9 }}>🔒 locked</span>}
                             </div>
@@ -575,17 +537,16 @@ export default function CareerDashboard() {
             <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-light)' }}>
               <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 3 }}>Minimum viable path</div>
               <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-                The single most direct chain from zero to {careerNode?.name}. {critPath.length} nodes, no detours.
+                The single most direct chain from zero to {careerNode?.display_name}. {critPath.length} nodes, no detours.
               </div>
             </div>
             <div style={{ padding: '16px 18px' }}>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {critPath.map((id, i) => {
-                  const n = nById[id]
+                  const n = nodeMap[id]
                   if (!n) return null
                   const st = getStatus(id)
                   const isTarget = id === career.id
-                  const prevDone = i === 0 || getStatus(critPath[i - 1]) === 'mastered'
                   return (
                     <React.Fragment key={id}>
                       {i > 0 && (
@@ -602,7 +563,6 @@ export default function CareerDashboard() {
                           marginLeft: 12, position: 'relative', cursor: 'pointer', transition: 'all .2s'
                         }}
                       >
-                        {/* dot */}
                         <div style={{
                           position: 'absolute', left: isTarget ? -9 : -7, top: '50%', transform: 'translateY(-50%)',
                           width: isTarget ? 16 : 12, height: isTarget ? 16 : 12,
@@ -613,10 +573,10 @@ export default function CareerDashboard() {
                         }} />
                         <div>
                           <div style={{ fontSize: 13, fontWeight: 500, color: isTarget ? 'var(--gold)' : 'var(--text-main)' }}>
-                            {n.name}{isTarget ? ' 🎯' : ''}
+                            {n.display_name}{isTarget ? ' 🎯' : ''}
                           </div>
                           <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-                            {TIER_LABEL[n.tier]} · {n.cat}{n.hrs > 0 ? ` · ${n.hrs}h` : ''}
+                            {TIER_LABEL[n.tier]} · {n.subject_category}{n.hrs > 0 ? ` · ${n.hrs}h` : ''}
                             {st === 'mastered' ? ' · ✓ Done' : st === 'inprogress' ? ' · In progress' : ''}
                           </div>
                         </div>
@@ -631,11 +591,11 @@ export default function CareerDashboard() {
 
       </main>
 
-      {/* ── Skip-ahead modal ── */}
+      {/* Skip-ahead modal */}
       {skipModal && (() => {
-        const target = nById[skipModal.nodeId]
+        const target = nodeMap[skipModal.nodeId]
         const prereqs = skipModal.prereqs
-        const totalHrs = prereqs.reduce((s, pid) => s + (nById[pid]?.hrs || 0), 0)
+        const totalHrs = prereqs.reduce((s, pid) => s + (nodeMap[pid]?.hrs || 0), 0)
         const SHOW_MAX = 8
         return (
           <div
@@ -655,7 +615,6 @@ export default function CareerDashboard() {
                 display: 'flex', flexDirection: 'column', gap: 16,
               }}
             >
-              {/* Header */}
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                 <div style={{
                   width: 36, height: 36, borderRadius: 8, flexShrink: 0,
@@ -664,7 +623,7 @@ export default function CareerDashboard() {
                 }}>⚡</div>
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 3 }}>
-                    Skip ahead to {target?.name}?
+                    Skip ahead to {target?.display_name}?
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5 }}>
                     This node is locked. Continuing will mark all{' '}
@@ -674,20 +633,18 @@ export default function CareerDashboard() {
                   </div>
                 </div>
               </div>
-
-              {/* Prereq list */}
               <div style={{
                 background: 'var(--bg-panel)', border: '1px solid var(--border-light)',
                 borderRadius: 8, padding: '10px 12px', maxHeight: 200, overflowY: 'auto',
                 display: 'flex', flexDirection: 'column', gap: 4,
               }}>
                 {prereqs.slice(0, SHOW_MAX).map(pid => {
-                  const pn = nById[pid]
-                  const col = CAT_COLOR[pn?.cat] || '#888'
+                  const pn = nodeMap[pid]
+                  const col = catColorMap[pn?.subject_category] || '#888'
                   return (
                     <div key={pid} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
                       <div style={{ width: 6, height: 6, borderRadius: '50%', background: col, flexShrink: 0 }} />
-                      <span style={{ flex: 1 }}>{pn?.name}</span>
+                      <span style={{ flex: 1 }}>{pn?.display_name}</span>
                       {pn?.hrs > 0 && <span style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>{pn.hrs}h</span>}
                     </div>
                   )
@@ -698,8 +655,6 @@ export default function CareerDashboard() {
                   </div>
                 )}
               </div>
-
-              {/* Buttons */}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <button
                   onClick={() => setSkipModal(null)}
@@ -722,7 +677,6 @@ export default function CareerDashboard() {
           </div>
         )
       })()}
-
     </div>
   )
 }

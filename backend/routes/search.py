@@ -40,12 +40,13 @@ def search_nodes(
     return [
         SkillNodeSummary(
             id=n["id"],
-            name=n["name"],
+            display_name=n["name"],
             tier=n["tier"],
-            cat=n["cat"],
+            subject_category=n["cat"],
             hrs=n.get("hrs"),
             asmt_count=n.get("asmt_count", 0),
             edu_level=n.get("edu_level"),
+            degree_level=n.get("degree_level"),
             summary=n.get("summary"),
             mastery=n.get("mastery"),
             prerequisite_ids=prereq_map.get(n["id"], []),

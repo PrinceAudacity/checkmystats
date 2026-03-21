@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import nodes, paths, search, saved_paths, categories
+from routes import nodes, paths, search, categories, user
 
 app = FastAPI(
     title="CheckMyStats API",
@@ -23,17 +23,13 @@ app.add_middleware(
 app.include_router(nodes.router)
 app.include_router(paths.router)
 app.include_router(search.router)
-app.include_router(saved_paths.router)
 app.include_router(categories.router)
+app.include_router(user.router)
 
 
 @app.get("/")
 def root():
-    return {
-        "status": "ok",
-        "message": "CheckMyStats API v2 is running",
-        "docs": "/docs",
-    }
+    return {"status": "ok", "message": "CheckMyStats API v2 is running", "docs": "/docs"}
 
 
 @app.get("/health")

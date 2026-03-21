@@ -1,10 +1,9 @@
+// frontend/src/App.jsx
 import React, { useRef, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import useGraph from './hooks/useGraph'
 import useAppState from './hooks/useAppState'
 import useCanvasView from './hooks/useCanvasView'
-import useSkillData from './hooks/useSkillData'
-import { NODE_POSITIONS } from './utils/layout'
-import { SKILL_NODES, CAT_NAMES } from './data/skillData'
 
 import Header from './components/Header'
 import Toolbar from './components/Toolbar'
@@ -22,9 +21,13 @@ export default function App() {
   const canvasRef = useRef(null)
   const navigate = useNavigate()
 
+  const {
+    nodes, edges, nodeMap, prereqOf, leadsTo,
+    positions, catColorMap, catNameMap,
+    loading: graphLoading, error: graphError
+  } = useGraph()
 
   const { vTx, vTy, vScale, zlblRef, resetView, zoomBy, animateTo } = useCanvasView(wrapRef)
-  const { loading: dataLoading } = useSkillData()
 
   const [panelOpen, setPanelOpen] = useState(false)
 
@@ -33,9 +36,8 @@ export default function App() {
     selNode, setSelNode, activePath, setActivePath, modalOpen, setModalOpen,
     highlightPath, clearPath, addCareer, removeCareer, selectCareer,
     backToFullMap, filterCat, switchMode
-  } = useAppState()
+  } = useAppState({ nodes, nodeMap, prereqOf, leadsTo, positions })
 
-  // Sync panel column width with panelOpen state
   useEffect(() => {
     document.documentElement.style.setProperty('--panel-w', panelOpen ? '300px' : '0px')
   }, [panelOpen])
@@ -55,7 +57,7 @@ export default function App() {
     setSelNode(node)
     setPanelOpen(true)
     highlightPath(node.id)
-    const p = NODE_POSITIONS[node.id]
+    const p = positions[node.id]
     if (p) {
       const ts = Math.max(vScale.current, .5)
       animateTo(wrapRef.current.offsetWidth / 2 - p.x * ts, wrapRef.current.offsetHeight / 2 - p.y * ts, ts, 500)
@@ -67,7 +69,7 @@ export default function App() {
     setPanelOpen(true)
     highlightPath(node.id)
     if (activeCareer) return
-    const p = NODE_POSITIONS[node.id]
+    const p = positions[node.id]
     if (p) {
       const ts = Math.max(vScale.current, .5)
       animateTo(wrapRef.current.offsetWidth / 2 - p.x * ts, wrapRef.current.offsetHeight / 2 - p.y * ts, ts, 500)
@@ -77,10 +79,10 @@ export default function App() {
   function handleFilterCat(cat) {
     filterCat(cat)
     if (cat) {
-      const ns = SKILL_NODES.filter(n => n.cat === cat)
+      const ns = nodes.filter(n => n.subject_category === cat)
       if (ns.length) {
         let mx = 0, my = 0, c = 0
-        ns.forEach(n => { const pos = NODE_POSITIONS[n.id]; if (pos) { mx += pos.x; my += pos.y; c++ } })
+        ns.forEach(n => { const pos = positions[n.id]; if (pos) { mx += pos.x; my += pos.y; c++ } })
         if (c) {
           mx /= c; my /= c
           const sc = cat === 'CRED' ? .4 : .55
@@ -97,15 +99,14 @@ export default function App() {
     resetView()
   }
 
-  // Breadcrumb text
   let breadcrumb = <span>Passive Skill Tree</span>
   if (activeCareer && activeCareerData) {
     breadcrumb = <><span>Career Path</span><span style={{ color: 'var(--accent-amber)', fontWeight: 500, marginLeft: 8 }}>{activeCareerData.name}</span></>
   } else if (activeCatFilter) {
-    breadcrumb = <><span>Passive Skill Tree</span><span style={{ color: 'var(--accent-amber)', fontWeight: 500, marginLeft: 8 }}>{CAT_NAMES[activeCatFilter]}</span></>
+    breadcrumb = <><span>Passive Skill Tree</span><span style={{ color: 'var(--accent-amber)', fontWeight: 500, marginLeft: 8 }}>{catNameMap[activeCatFilter]}</span></>
   }
 
-  if (dataLoading) {
+  if (graphLoading) {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -117,13 +118,21 @@ export default function App() {
     )
   }
 
+  if (graphError) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100vh', color: 'var(--accent-red)', fontSize: 13, fontFamily: 'var(--font)',
+        background: 'var(--bg-canvas)'
+      }}>
+        Failed to load skill data: {graphError}
+      </div>
+    )
+  }
+
   return (
     <>
-      <Header
-        breadcrumb={breadcrumb}
-        onResetView={resetView}
-        onClearPath={clearPath}
-      />
+      <Header breadcrumb={breadcrumb} onResetView={resetView} onClearPath={clearPath} />
 
       <Toolbar
         sidebarMode={sidebarMode}
@@ -136,6 +145,9 @@ export default function App() {
         activeCatFilter={activeCatFilter}
         activeCareer={activeCareer}
         addedCareers={addedCareers}
+        nodes={nodes}
+        catColorMap={catColorMap}
+        catNameMap={catNameMap}
         onSwitchMode={switchMode}
         onFilterCat={handleFilterCat}
         onSelectCareer={selectCareer}
@@ -144,11 +156,7 @@ export default function App() {
         onNodeSelect={handleNodeSelect}
       />
 
-      {/* Canvas area */}
-      <div
-        style={{ gridArea: 'canvas', position: 'relative', overflow: 'hidden' }}
-      >
-        {/* Map canvas — hidden when viewing a career */}
+      <div style={{ gridArea: 'canvas', position: 'relative', overflow: 'hidden' }}>
         <div
           ref={wrapRef}
           style={{
@@ -159,10 +167,14 @@ export default function App() {
           <MapCanvas
             wrapRef={wrapRef}
             canvasRef={canvasRef}
-            vTx={vTx}
-            vTy={vTy}
-            vScale={vScale}
-            zlblRef={zlblRef}
+            vTx={vTx} vTy={vTy} vScale={vScale} zlblRef={zlblRef}
+            nodes={nodes}
+            edges={edges}
+            nodeMap={nodeMap}
+            prereqOf={prereqOf}
+            positions={positions}
+            catColorMap={catColorMap}
+            catNameMap={catNameMap}
             selNode={selNode}
             activePath={activePath}
             activeCatFilter={activeCatFilter}
@@ -171,12 +183,15 @@ export default function App() {
           />
         </div>
 
-        {/* Career view — shown when a career is active */}
         {activeCareer && activeCareerData && (
           <CareerView
             career={activeCareerData}
             progress={careerProgress}
             zlblRef={zlblRef}
+            nodeMap={nodeMap}
+            prereqOf={prereqOf}
+            leadsTo={leadsTo}
+            catColorMap={catColorMap}
             onNodeSelect={node => { setSelNode(node); setPanelOpen(true) }}
             onHighlightPath={path => setActivePath(path)}
             onOpenDashboard={openDashboard}
@@ -184,11 +199,7 @@ export default function App() {
         )}
 
         <PathInfo activePath={activePath} selNode={selNode} />
-        <ZoomControls
-          zlblRef={zlblRef}
-          onZoomIn={() => zoomBy(1.3)}
-          onZoomOut={() => zoomBy(.75)}
-        />
+        <ZoomControls zlblRef={zlblRef} onZoomIn={() => zoomBy(1.3)} onZoomOut={() => zoomBy(.75)} />
         <Legend />
       </div>
 
@@ -196,6 +207,11 @@ export default function App() {
         node={selNode}
         panelOpen={panelOpen}
         addedCareers={addedCareers}
+        nodeMap={nodeMap}
+        prereqOf={prereqOf}
+        leadsTo={leadsTo}
+        catColorMap={catColorMap}
+        catNameMap={catNameMap}
         onNodeSelect={handleNodeSelect}
         onTraceNode={id => { highlightPath(id) }}
         onClearPath={clearPath}
@@ -206,10 +222,13 @@ export default function App() {
       <AddCareerModal
         open={modalOpen}
         addedCareers={addedCareers}
+        nodes={nodes}
+        prereqOf={prereqOf}
+        catColorMap={catColorMap}
+        catNameMap={catNameMap}
         onAdd={addCareer}
         onClose={() => setModalOpen(false)}
       />
-
     </>
   )
 }

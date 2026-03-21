@@ -1,8 +1,6 @@
 import React, { useEffect } from 'react'
-import { SKILL_NODES, CAT_COLOR, CAT_NAMES } from '../data/skillData'
-import { prereqOf } from '../utils/graph'
 
-export default function AddCareerModal({ open, addedCareers, onAdd, onClose }) {
+export default function AddCareerModal({ open, addedCareers, nodes, prereqOf, catColorMap, catNameMap, onAdd, onClose }) {
   useEffect(() => {
     function handler(e) { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', handler)
@@ -11,7 +9,7 @@ export default function AddCareerModal({ open, addedCareers, onAdd, onClose }) {
 
   if (!open) return null
 
-  const specializations = SKILL_NODES.filter(n => n.tier === 2)
+  const specializations = nodes.filter(n => n.tier === 2)
 
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
@@ -27,11 +25,11 @@ export default function AddCareerModal({ open, addedCareers, onAdd, onClose }) {
                 className={`modal-career-item${added ? ' disabled' : ''}`}
                 onClick={added ? undefined : () => onAdd(n.id)}
               >
-                <div className="mci-dot" style={{ background: CAT_COLOR[n.cat] }} />
+                <div className="mci-dot" style={{ background: catColorMap[n.subject_category] }} />
                 <div className="mci-info">
-                  <div className="mci-name">{n.name}</div>
+                  <div className="mci-name">{n.display_name}</div>
                   <div className="mci-meta">
-                    {CAT_NAMES[n.cat]} · {(prereqOf[n.id] || []).length} prereqs{added ? ' · Added' : ''}
+                    {catNameMap[n.subject_category]} · {(prereqOf[n.id] || []).length} prereqs{added ? ' · Added' : ''}
                   </div>
                 </div>
               </div>

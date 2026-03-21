@@ -16,12 +16,13 @@ class CategorySchema(BaseModel):
 
 class SkillNodeBase(BaseModel):
     id: str
-    name: str
+    display_name: str
     tier: int
-    cat: str
+    subject_category: str
     hrs: Optional[int] = None
     asmt_count: Optional[int] = 0
     edu_level: Optional[str] = None
+    degree_level: Optional[str] = None
     summary: Optional[str] = None
     mastery: Optional[str] = None
 

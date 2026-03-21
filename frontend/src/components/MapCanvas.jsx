@@ -1,13 +1,13 @@
 import React, { useRef, useEffect } from 'react'
-import { SKILL_NODES, EDGES, CAT_COLOR, CAT_NAMES, TIER_LABEL, EDU_LABELS } from '../data/skillData'
-import { NODE_POSITIONS, RINGS, CANVAS_CENTER, DS } from '../utils/layout'
-import { nById, prereqOf } from '../utils/graph'
+import { RINGS, CANVAS_CENTER, DS } from '../utils/layout'
+import { TIER_LABEL, EDU_LABELS } from '../utils/constants'
 
 const { CX, CY } = CANVAS_CENTER
 let _stars = null
 
 export default function MapCanvas({
   wrapRef, canvasRef, vTx, vTy, vScale, zlblRef,
+  nodes, edges, nodeMap, prereqOf, positions, catColorMap, catNameMap,
   selNode, activePath, activeCatFilter,
   onNodeClick, onResetView
 }) {
@@ -18,6 +18,22 @@ export default function MapCanvas({
   useEffect(() => { selNodeRef.current = selNode }, [selNode])
   useEffect(() => { activePathRef.current = activePath }, [activePath])
   useEffect(() => { activeCatRef.current = activeCatFilter }, [activeCatFilter])
+
+  // Refs for async-loaded graph data (required for RAF loop correctness)
+  const nodesRef       = useRef(nodes)
+  const edgesRef       = useRef(edges)
+  const nodeMapRef     = useRef(nodeMap)
+  const prereqOfRef    = useRef(prereqOf)
+  const positionsRef   = useRef(positions)
+  const catColorMapRef = useRef(catColorMap)
+  const catNameMapRef  = useRef(catNameMap)
+  useEffect(() => { nodesRef.current = nodes },       [nodes])
+  useEffect(() => { edgesRef.current = edges },       [edges])
+  useEffect(() => { nodeMapRef.current = nodeMap },   [nodeMap])
+  useEffect(() => { prereqOfRef.current = prereqOf }, [prereqOf])
+  useEffect(() => { positionsRef.current = positions },[positions])
+  useEffect(() => { catColorMapRef.current = catColorMap }, [catColorMap])
+  useEffect(() => { catNameMapRef.current = catNameMap },   [catNameMap])
 
   const hovNodeRef = useRef(null)
   const isPanRef = useRef(false)
@@ -49,6 +65,14 @@ export default function MapCanvas({
     const selN = selNodeRef.current
     const aPath = activePathRef.current
     const aCat = activeCatRef.current
+    // Read async data via refs
+    const nodes       = nodesRef.current
+    const edges       = edgesRef.current
+    const nodeMap     = nodeMapRef.current
+    const prereqOf    = prereqOfRef.current
+    const positions   = positionsRef.current
+    const catColorMap = catColorMapRef.current
+    const catNameMap  = catNameMapRef.current
 
     ctx.clearRect(0, 0, W, H)
     ctx.fillStyle = li ? '#EEF0F8' : '#0e0e1a'
@@ -68,7 +92,7 @@ export default function MapCanvas({
         ctx.arc(ccx, ccy, r2, sec.a - sec.s / 2, sec.a + sec.s / 2)
         ctx.arc(ccx, ccy, r1, sec.a + sec.s / 2, sec.a - sec.s / 2, true)
         ctx.closePath()
-        ctx.fillStyle = CAT_COLOR[cat] || '#888'
+        ctx.fillStyle = catColorMap[cat] || '#888'
         ctx.fill()
         ctx.restore()
       })
@@ -104,41 +128,41 @@ export default function MapCanvas({
       ctx.fillText(ring.l, lx + 8, ly - 6); ctx.restore()
     })
 
-    // Edges
-    EDGES.forEach(([aId, bId]) => {
-      const pa = NODE_POSITIONS[aId], pb = NODE_POSITIONS[bId]
+    // Edges — backend returns {source, target} objects
+    edges.forEach(({ source: aId, target: bId }) => {
+      const pa = positions[aId], pb = positions[bId]
       if (!pa || !pb) return
       const { sx: ax, sy: ay } = w2s(pa.x, pa.y)
       const { sx: bx, sy: by } = w2s(pb.x, pb.y)
-      const na = nById[aId]
+      const na = nodeMap[aId]
       const onP = aPath?.edgeSet.has(aId + '→' + bId)
       const dim = aPath && !onP
-      const catDim = !aPath && aCat && na?.cat !== aCat && nById[bId]?.cat !== aCat
+      const catDim = !aPath && aCat && na?.subject_category !== aCat && nodeMap[bId]?.subject_category !== aCat
       ctx.save()
       if (onP) {
-        ctx.globalAlpha = .95; ctx.strokeStyle = CAT_COLOR[na?.cat] || '#aaa'
+        ctx.globalAlpha = .95; ctx.strokeStyle = catColorMap[na?.subject_category] || '#aaa'
         ctx.lineWidth = 2.8 * Math.min(scale, 1)
         ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 10
       } else if (dim || catDim) {
         ctx.globalAlpha = .03; ctx.strokeStyle = li ? 'rgba(80,80,120,1)' : 'rgba(120,130,160,1)'; ctx.lineWidth = .5
       } else {
-        ctx.globalAlpha = li ? .14 : .16; ctx.strokeStyle = CAT_COLOR[na?.cat] || '#888'; ctx.lineWidth = .7
+        ctx.globalAlpha = li ? .14 : .16; ctx.strokeStyle = catColorMap[na?.subject_category] || '#888'; ctx.lineWidth = .7
       }
       ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke()
       ctx.restore()
     })
 
     // Nodes
-    SKILL_NODES.forEach(n => {
-      const p = NODE_POSITIONS[n.id]
+    nodes.forEach(n => {
+      const p = positions[n.id]
       if (!p) return
       const { sx, sy } = w2s(p.x, p.y)
       if (sx < -80 || sx > W + 80 || sy < -80 || sy > H + 80) return
       const isH = hovNodeRef.current?.id === n.id
       const isS = selN?.id === n.id
       const onP = aPath?.nodeSet.has(n.id)
-      const dim = (aPath && !onP && !isS) || (aCat && n.cat !== aCat && !onP)
-      const col = CAT_COLOR[n.cat] || '#888'
+      const dim = (aPath && !onP && !isS) || (aCat && n.subject_category !== aCat && !onP)
+      const col = catColorMap[n.subject_category] || '#888'
       let r = n.tier === 0 ? 5 : n.tier === 1 ? 8 : n.tier === 2 ? 13 : 10
       r = r * (isH || isS ? 1.35 : 1) * Math.min(scale * 1.1, 1.4)
       ctx.save(); ctx.globalAlpha = dim ? .08 : 1
@@ -188,11 +212,11 @@ export default function MapCanvas({
         ctx.textAlign = 'center'
         if (!li) { ctx.shadowColor = 'rgba(0,0,0,.9)'; ctx.shadowBlur = 4 }
         ctx.fillStyle = li ? 'rgba(10,10,30,.9)' : 'rgba(225,228,245,.95)'
-        ctx.fillText(n.name, sx, sy + r * 1.5 + fs + 1)
-        if (n.level && (scale > .3 || isH || isS || onP)) {
+        ctx.fillText(n.display_name, sx, sy + r * 1.5 + fs + 1)
+        if (n.degree_level && (scale > .3 || isH || isS || onP)) {
           ctx.font = `500 ${Math.max(8, 9 * scale)}px -apple-system,sans-serif`
           ctx.fillStyle = li ? 'rgba(100,90,50,.5)' : 'rgba(200,180,120,.45)'
-          ctx.fillText(n.level.toUpperCase(), sx, sy + r * 1.5 + fs + 1 + fs * .85)
+          ctx.fillText(n.degree_level.toUpperCase(), sx, sy + r * 1.5 + fs + 1 + fs * .85)
         }
         ctx.shadowBlur = 0
       }
@@ -209,9 +233,9 @@ export default function MapCanvas({
         ctx.globalAlpha = Math.max(0, (.28 - scale) / .18 * .6)
         ctx.font = `600 ${Math.max(11, 13 * scale)}px -apple-system,sans-serif`
         ctx.textAlign = 'center'
-        ctx.fillStyle = CAT_COLOR[cat] || '#888'
+        ctx.fillStyle = catColorMap[cat] || '#888'
         ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 6
-        ctx.fillText(CAT_NAMES[cat] || cat, sx, sy)
+        ctx.fillText(catNameMap[cat] || cat, sx, sy)
         ctx.restore()
       })
     }
@@ -239,11 +263,15 @@ export default function MapCanvas({
   function hoverCheck(e) {
     const wrap = wrapRef.current
     if (!wrap) return
+    const nodes     = nodesRef.current
+    const prereqOf  = prereqOfRef.current
+    const positions = positionsRef.current
+    const catNameMap = catNameMapRef.current
     const r = wrap.getBoundingClientRect()
     const mx = e.clientX - r.left, my = e.clientY - r.top
     let found = null, md = Infinity
-    SKILL_NODES.forEach(n => {
-      const p = NODE_POSITIONS[n.id]
+    nodes.forEach(n => {
+      const p = positions[n.id]
       if (!p) return
       const { sx, sy } = w2s(p.x, p.y)
       const hit = (n.tier === 0 ? 6 : n.tier === 1 ? 10 : n.tier === 2 ? 16 : 12) * Math.min(vScale.current * 1.1, 1.4) + 10
@@ -252,12 +280,12 @@ export default function MapCanvas({
     })
     hovNodeRef.current = found
     if (found && tipRef.current) {
-      const parts = [TIER_LABEL[found.tier], CAT_NAMES[found.cat]]
+      const parts = [TIER_LABEL[found.tier], catNameMap[found.subject_category]]
       if (found.edu) parts.push(EDU_LABELS[found.edu])
       if (found.hrs) parts.push(found.hrs + 'h')
-      if (found.level) parts.push(found.level.toUpperCase())
+      if (found.degree_level) parts.push(found.degree_level.toUpperCase())
       parts.push((prereqOf[found.id] || []).length + ' prereqs')
-      tipRef.current.children[0].textContent = found.name
+      tipRef.current.children[0].textContent = found.display_name
       tipRef.current.children[1].textContent = parts.filter(Boolean).join(' · ')
       tipRef.current.style.left = (e.clientX + 14) + 'px'
       tipRef.current.style.top = (e.clientY - 8) + 'px'
@@ -300,11 +328,13 @@ export default function MapCanvas({
     }
     function onMouseUp() { isPanRef.current = false; wrap.style.cursor = 'grab' }
     function onClick(e) {
+      const nodes     = nodesRef.current
+      const positions = positionsRef.current
       const r = wrap.getBoundingClientRect()
       const mx = e.clientX - r.left, my = e.clientY - r.top
       let cl = null, md = Infinity
-      SKILL_NODES.forEach(n => {
-        const p = NODE_POSITIONS[n.id]
+      nodes.forEach(n => {
+        const p = positions[n.id]
         if (!p) return
         const { sx, sy } = w2s(p.x, p.y)
         const hit = (n.tier === 0 ? 6 : n.tier === 1 ? 10 : n.tier === 2 ? 16 : 12) * Math.min(vScale.current * 1.1, 1.4) + 10

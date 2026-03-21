@@ -1,22 +1,25 @@
+// frontend/src/hooks/useAppState.js
 import { useState, useCallback, useEffect } from 'react'
-import { nById, leadsTo, buildFullPath, layoutCareerDAG } from '../utils/graph'
-import useAuth from './useAuth'
-import { fetchUserCareerPaths, insertCareerPath, deleteCareerPath } from '../services/dataService'
+import { buildFullPath, layoutCareerDAG } from '../utils/graph'
+import useCareerPaths from './useCareerPaths'
 
-function buildCareerObj(specId) {
-  const n = nById[specId]
+/**
+ * Build a career object for display.
+ * Uses pure graph functions that accept data as parameters.
+ */
+function buildCareerObj(specId, nodeMap, prereqOf, leadsTo) {
+  const n = nodeMap[specId]
   if (!n) return null
-  const { nodeSet, edgeSet } = buildFullPath(specId)
+  const { nodeSet, edgeSet } = buildFullPath(nodeMap, prereqOf, leadsTo, specId)
   ;(leadsTo[specId] || []).forEach(cid => {
-    if (nById[cid]?.tier === 3) { nodeSet.add(cid); edgeSet.add(specId + '→' + cid) }
+    if (nodeMap[cid]?.tier === 3) { nodeSet.add(cid); edgeSet.add(specId + '→' + cid) }
   })
-  const positions = layoutCareerDAG(specId, nodeSet, edgeSet)
-  return { id: specId, name: n.name, cat: n.cat, nodeSet, edgeSet, positions }
+  const positions = layoutCareerDAG(nodeMap, specId, nodeSet, edgeSet)
+  return { id: specId, name: n.display_name, cat: n.subject_category, nodeSet, edgeSet, positions }
 }
 
-export default function useAppState() {
-  const { session } = useAuth()
-  const userId = session?.user?.id
+export default function useAppState({ nodes, nodeMap, prereqOf, leadsTo, positions }) {
+  const { careerIds, addCareer: persistAddCareer, removeCareer: persistRemoveCareer } = useCareerPaths()
 
   const [addedCareers, setAddedCareers] = useState([])
   const [activeCareer, setActiveCareer] = useState(null)
@@ -26,29 +29,30 @@ export default function useAppState() {
   const [activePath, setActivePath] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
 
+  // When graph data and career IDs are loaded, hydrate addedCareers
   useEffect(() => {
-    if (!userId) return
-    fetchUserCareerPaths(userId).then(ids => {
-      setAddedCareers(prev => {
-        const existingIds = new Set(prev.map(c => c.id))
-        const loaded = ids.map(buildCareerObj).filter(c => c && !existingIds.has(c.id))
-        return loaded.length ? [...prev, ...loaded] : prev
-      })
+    if (!nodeMap || Object.keys(nodeMap).length === 0) return
+    if (careerIds.length === 0) return
+    setAddedCareers(prev => {
+      const existingIds = new Set(prev.map(c => c.id))
+      const loaded = careerIds
+        .filter(id => !existingIds.has(id))
+        .map(id => buildCareerObj(id, nodeMap, prereqOf, leadsTo))
+        .filter(Boolean)
+      return loaded.length ? [...prev, ...loaded] : prev
     })
-  }, [userId])
+  }, [careerIds, nodeMap, prereqOf, leadsTo])
 
   const highlightPath = useCallback((id) => {
-    const path = buildFullPath(id)
+    const path = buildFullPath(nodeMap, prereqOf, leadsTo, id)
     setActivePath(path)
     return path
-  }, [])
+  }, [nodeMap, prereqOf, leadsTo])
 
-  const clearPath = useCallback(() => {
-    setActivePath(null)
-  }, [])
+  const clearPath = useCallback(() => setActivePath(null), [])
 
   const addCareer = useCallback((specId) => {
-    const career = buildCareerObj(specId)
+    const career = buildCareerObj(specId, nodeMap, prereqOf, leadsTo)
     if (!career) return
     setAddedCareers(prev => {
       if (prev.find(c => c.id === specId)) return prev
@@ -60,14 +64,14 @@ export default function useAppState() {
     setActiveCatFilter(null)
     setActivePath(null)
     setSelNode(null)
-    if (userId) insertCareerPath(userId, specId)
-  }, [userId])
+    persistAddCareer(specId)
+  }, [nodeMap, prereqOf, leadsTo, persistAddCareer])
 
   const removeCareer = useCallback((specId) => {
     setAddedCareers(prev => prev.filter(c => c.id !== specId))
     setActiveCareer(prev => prev === specId ? null : prev)
-    if (userId) deleteCareerPath(userId, specId)
-  }, [userId])
+    persistRemoveCareer(specId)
+  }, [persistRemoveCareer])
 
   const selectCareer = useCallback((specId) => {
     setActiveCareer(specId)

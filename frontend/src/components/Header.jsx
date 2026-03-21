@@ -1,5 +1,4 @@
 import React from 'react'
-import NavActions from './NavActions'
 
 export default function Header({ breadcrumb, onResetView, onClearPath }) {
   return (
@@ -21,7 +20,6 @@ export default function Header({ breadcrumb, onResetView, onClearPath }) {
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
         <button onClick={onResetView} style={hdrBtnStyle}>Reset view</button>
         <button onClick={onClearPath} style={hdrBtnStyle}>Clear path</button>
-        <NavActions />
       </div>
     </header>
   )
