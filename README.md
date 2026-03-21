@@ -7,11 +7,11 @@ where they can go, and the precise path to get there.
 
 ## Stack
 
-- **Frontend**: React + Vite + D3.js + Tailwind CSS
-- **Backend**: Python + FastAPI + SQLAlchemy
-- **Auth / DB migrations**: Supabase
+- **Frontend**: React + Vite + Tailwind CSS
+- **Backend**: Python + FastAPI + Supabase Python client
+- **Auth / DB**: Supabase (auth, Postgres, migrations, edge functions)
 - **Containers**: Docker + Docker Compose
-- **Deployment**: Render.com
+- **Deployment**: Render.com (webhook not yet configured)
 
 ## Quick Start
 
