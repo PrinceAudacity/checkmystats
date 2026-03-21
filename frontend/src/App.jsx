@@ -4,8 +4,10 @@ import { useNavigate } from 'react-router-dom'
 import useGraph from './hooks/useGraph'
 import useAppState from './hooks/useAppState'
 import useCanvasView from './hooks/useCanvasView'
+import { useAuthContext } from './contexts/AuthContext'
 
 import Header from './components/Header'
+import Spinner from './components/Spinner'
 import Toolbar from './components/Toolbar'
 import Sidebar from './components/Sidebar'
 import MapCanvas from './components/MapCanvas'
@@ -20,6 +22,7 @@ export default function App() {
   const wrapRef = useRef(null)
   const canvasRef = useRef(null)
   const navigate = useNavigate()
+  const { session } = useAuthContext()
 
   const {
     nodes, edges, nodeMap, prereqOf, leadsTo,
@@ -106,17 +109,7 @@ export default function App() {
     breadcrumb = <><span>Passive Skill Tree</span><span style={{ color: 'var(--accent-amber)', fontWeight: 500, marginLeft: 8 }}>{catNameMap[activeCatFilter]}</span></>
   }
 
-  if (graphLoading) {
-    return (
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100vh', color: 'var(--text-dim)', fontSize: 13, fontFamily: 'var(--font)',
-        background: 'var(--bg-canvas)'
-      }}>
-        Loading skill data…
-      </div>
-    )
-  }
+  if (graphLoading) return <Spinner label="Loading skill data…" />
 
   if (graphError) {
     return (
@@ -132,7 +125,7 @@ export default function App() {
 
   return (
     <>
-      <Header breadcrumb={breadcrumb} onResetView={resetView} onClearPath={clearPath} />
+      <Header breadcrumb={breadcrumb} onResetView={resetView} onClearPath={clearPath} session={session} />
 
       <Toolbar
         sidebarMode={sidebarMode}

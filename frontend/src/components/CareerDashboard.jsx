@@ -5,6 +5,7 @@ import { buildFullPath, layoutCareerDAG } from '../utils/graph'
 import '../styles/dashboard.css'
 import useGraph from '../hooks/useGraph'
 import useSkillStatus from '../hooks/useSkillStatus'
+import Spinner from './Spinner'
 
 // Build a career object from a spec node id
 function buildCareer(specId, nodeMap, prereqOf, leadsTo) {
@@ -66,7 +67,7 @@ export default function CareerDashboard() {
   const navigate = useNavigate()
 
   const { nodeMap, prereqOf, leadsTo, catColorMap, catNameMap, loading: graphLoading, error: graphError } = useGraph()
-  const { statuses, updateStatus } = useSkillStatus()
+  const { statuses, updateStatus, loading: skillLoading } = useSkillStatus()
 
   const career = useMemo(() => {
     if (!nodeMap || Object.keys(nodeMap).length === 0) return null
@@ -121,11 +122,7 @@ export default function CareerDashboard() {
     setSkipModal(null)
   }
 
-  if (graphLoading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-dim)', fontFamily: 'var(--font)', fontSize: 14 }}>
-      Loading…
-    </div>
-  )
+  if (graphLoading || skillLoading) return <Spinner label="Loading dashboard…" />
 
   if (graphError) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--accent-red)', fontFamily: 'var(--font)', fontSize: 14 }}>

@@ -1,6 +1,29 @@
-import React from 'react'
+import React, { useState, useRef, useEffect } from 'react'
+import { supabase } from '../services/supabase'
 
-export default function Header({ breadcrumb, onResetView, onClearPath }) {
+export default function Header({ breadcrumb, onResetView, onClearPath, session }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    function handleClickOutside(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [menuOpen])
+
+  function handleSignOut() {
+    setMenuOpen(false)
+    if (supabase) supabase.auth.signOut().catch(() => {})
+  }
+
+  const email = session?.user?.email ?? ''
+  const initial = email ? email[0].toUpperCase() : ''
+
   return (
     <header style={{
       gridArea: 'nav',
@@ -20,6 +43,27 @@ export default function Header({ breadcrumb, onResetView, onClearPath }) {
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
         <button onClick={onResetView} style={hdrBtnStyle}>Reset view</button>
         <button onClick={onClearPath} style={hdrBtnStyle}>Clear path</button>
+
+        {session?.user && (
+          <div ref={menuRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setMenuOpen(v => !v)}
+              style={avatarStyle}
+              title={email}
+            >
+              {initial}
+            </button>
+
+            {menuOpen && (
+              <div style={dropdownStyle}>
+                <div style={emailRowStyle}>{email}</div>
+                <button onClick={handleSignOut} style={signOutStyle}>
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </header>
   )
@@ -31,8 +75,29 @@ const hdrBtnStyle = {
   fontFamily: 'var(--font)'
 }
 
-const themeToggleStyle = {
-  width: 32, height: 32, borderRadius: 'var(--radius-pill)', border: '1px solid var(--border-light)',
-  background: 'var(--bg-hover)', color: 'var(--text-dim)', cursor: 'pointer',
-  display: 'flex', alignItems: 'center', justifyContent: 'center'
+const avatarStyle = {
+  width: 28, height: 28, borderRadius: '50%',
+  background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-violet))',
+  border: 'none', color: '#fff', fontSize: 11, fontWeight: 600,
+  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+  fontFamily: 'var(--font)', flexShrink: 0
+}
+
+const dropdownStyle = {
+  position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+  background: 'var(--bg-panel-solid)', border: '1px solid var(--border-light)',
+  borderRadius: 'var(--radius-sm)', minWidth: 180, zIndex: 300,
+  boxShadow: '0 4px 16px rgba(0,0,0,0.4)', overflow: 'hidden'
+}
+
+const emailRowStyle = {
+  padding: '8px 12px', fontSize: 11, color: 'var(--text-dim)',
+  maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+  borderBottom: '1px solid var(--border-light)'
+}
+
+const signOutStyle = {
+  display: 'block', width: '100%', padding: '8px 12px',
+  background: 'transparent', border: 'none', color: 'var(--text-dim)',
+  fontSize: 11, cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font)'
 }
